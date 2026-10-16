@@ -18,6 +18,7 @@ void setup() {
 	setupSPI();
 	setupWifi();
 	setupMQTT();
+	setupOTA();
 
 	sendDiagnosticRequest();
 	sendQuerySIDMap();
@@ -35,6 +36,10 @@ void loopUpdateSIDMap() {
 void loop() {
 	receiveSPIMessage(&handleRX);
 	loopMQTT();
+	
+	loopBridgeSensors();
+
+	loopOTA();
 
 	loopUpdateSIDMap();
 	loopTX();

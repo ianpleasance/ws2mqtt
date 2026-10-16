@@ -42,21 +42,52 @@ void sendWelcomeMsg() {
 	handleTX((uint8_t*)&pkt, sizeof(pkt));
 }
 
-void sendTestButtonMsg() {
-	Serial.printf("Sending test button message\n");
+void sendTestButtonMsg(uint8_t device_type) {
+	Serial.printf("Sending test message\n");
 
 	pkt_tx_event_button_t pkt;
 	memset(&pkt, 0, sizeof(pkt));
 
 	pkt.cmd = SPI_TX_EVENT_BUTTON;
 	pkt.device_id = DEVICE_ID;
-	pkt.device_type = DEVICE_TYPE_ALL;
+	pkt.device_type = device_type;
 	pkt._unknown = 0x01;
 	pkt.model = 0x047C;
 	pkt.stop = SPI_STOP_WORD;
 
 	handleTX((uint8_t*)&pkt, sizeof(pkt));
 }
+
+void sendSilenceButtonMsg(uint8_t device_type) {
+	Serial.printf("Sending silence message\n");
+
+	pkt_tx_silence_button_t pkt;
+	memset(&pkt, 0, sizeof(pkt));
+
+	pkt.cmd = SPI_TX_SILENCE_BUTTON;
+	pkt.device_id = DEVICE_ID;
+	pkt.device_type = device_type;
+	pkt._unknown = 0x01;
+	pkt.stop = SPI_STOP_WORD;
+
+	handleTX((uint8_t*)&pkt, sizeof(pkt));
+}
+
+void sendEmergencyButtonMsg(uint8_t device_type) {
+	Serial.printf("Sending emergency message\n");
+
+	pkt_tx_emergency_button_t pkt;
+	memset(&pkt, 0, sizeof(pkt));
+
+	pkt.cmd = SPI_TX_EMERGENCY_BUTTON;
+	pkt.device_id = DEVICE_ID;
+	pkt.device_type = device_type;
+	pkt._unknown = 0x00;
+	pkt.stop = SPI_STOP_WORD;
+
+	handleTX((uint8_t*)&pkt, sizeof(pkt));
+}
+
 
 void sendDiagnosticRequest() {
 	Serial.printf("Sending diagnostic request\n");

@@ -7,15 +7,29 @@
 
 #define HA_AUTODISCOVERY_PREFIX "homeassistant"
 
+#define BRIDGE_SENSOR_INTERVAL 10 // seconds between sending bridge sensor updates
+
 void announceAllDevices();
 void publishAllCachedDeviceStates();
 
 void announceMQTTBridge();
 void announceMQTTBridgeEntities();
-void announceMQTTBridgeButtonEntity(char* name, char* command, bool diagnostic);
+void announceMQTTBridgeButtonEntity(char* name, char* command, bool diagnostic, bool enabled, char* icon);
+void announceMQTTBridgeSensorEntity(
+	char* name, 
+	char* sensor, 
+	char* dev_class, 
+	char* unit, 
+	bool diagnostic, 
+	bool enabled, 
+	char* icon
+);
 
 void addBridgeDescription(JsonObject dev);
 void sendMQTTBridgeEvent();
+
+void loopBridgeSensors();
+void sendMQTTBridgeSensor (char* sensor, char* sensor_value);
 
 void announceMQTTDevice(device_t device);
 void addDeviceDescription(JsonObject dev, device_t device);
