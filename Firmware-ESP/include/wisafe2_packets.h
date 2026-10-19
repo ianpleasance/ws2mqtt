@@ -1,6 +1,7 @@
 #ifndef WISAFE_2_PACKETS_H
 #define WISAFE_2_PACKETS_H 1
 
+#include "config.h"
 #pragma pack(push)
 #pragma pack(1)
 
@@ -216,3 +217,4 @@ typedef struct {
 
 #pragma pack(pop)
 #endif
+
