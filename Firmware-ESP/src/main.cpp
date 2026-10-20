@@ -8,6 +8,9 @@
 #include "wisafe2_rx.h"
 #include "wisafe2_tx.h"
 #include "device_db.h"
+#include "device_runtime.h"
+#include "mqtt_log.h"
+#include "web_server.h"
 
 int ownSid = -1;
 unsigned long lastSIDMapRequestedAt = 0;
@@ -15,11 +18,14 @@ unsigned long lastSIDMapRequestedAt = 0;
 void setup() {
 	Serial.begin(19200);
 	delay(500);
+	mqttLogBegin();
 	setupDeviceDB();
+	runtimeLoadFromDB();
 	setupSPI();
 	setupWifi();
 	setupMQTT();
 	setupOTA();
+	setupWeb();
 
 	sendDiagnosticRequest();
 	sendQuerySIDMap();
@@ -41,6 +47,7 @@ void loop() {
 	loopBridgeSensors();
 
 	loopOTA();
+	loopWeb();
 
 	loopUpdateSIDMap();
 	loopTX();

@@ -23,5 +23,8 @@ void sendDiagnosticRequest();
 void sendQuerySIDMap();
 void sendQueryDiagnosticDetails(uint8_t sid, uint8_t subsubtype);
 
+// Number of messages waiting to be sent to the module
+int txQueueDepth();
+
 void loopTX();
 #endif

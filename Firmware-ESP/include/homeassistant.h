@@ -4,6 +4,7 @@
 #include "ArduinoJson.h"
 #include "wisafe2_packets.h"
 #include "device_db.h"
+#include "device_models.h"
 
 #define HA_AUTODISCOVERY_PREFIX "homeassistant"
 
@@ -51,5 +52,4 @@ void removeMQTTButtonEvent(device_t device);
 
 void handleMQTTCommand(char* command);
 
-char* modelString(uint16_t model_id);
 #endif

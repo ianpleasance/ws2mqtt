@@ -7,6 +7,8 @@
 #include "wisafe2_rx.h"
 #include "wisafe2_tx.h"
 #include "device_db.h"
+#include "device_runtime.h"
+#include "module_info.h"
 
 extern int ownSid;
 extern PubSubClient mqttClient;
@@ -18,6 +20,7 @@ static void copyPacket(void* dst, size_t dstSize, const uint8_t* msg, int length
 	memset(dst, 0, dstSize);
 	if (length < (int)dstSize) {
 		Serial.printf("Warning: short %s packet (%d bytes, expected %d)\n", name, length, (int)dstSize);
+		moduleInfo.rxShortPackets++;
 		memcpy(dst, msg, length > 0 ? length : 0);
 	} else {
 		memcpy(dst, msg, dstSize);
@@ -30,6 +33,7 @@ void handleAlarmEvent(uint8_t* msg, int length) {
 
 	Serial.printf("Alarm event received from device %u cmd %02x type %02x\n", (unsigned int)pkt.device_id, pkt.cmd, pkt.device_type);
 
+	runtimeSetAlarm(pkt.device_id, true);
 	sendMQTTState(pkt.device_id, (char *)"alarm", true);
 	sendMQTTBridgeEvent();
 }
@@ -40,6 +44,7 @@ void handleAlarmOffEvent(uint8_t* msg, int length) {
 
 	Serial.printf("Alarm off event received from device %u cmd %02x type %02x\n", (unsigned int)pkt.device_id, pkt.cmd, pkt.device_type);
 
+	runtimeSetAlarm(pkt.device_id, false);
 	sendMQTTState(pkt.device_id, (char *)"alarm", false);
 }
 
@@ -49,6 +54,7 @@ void handleButtonEvent(uint8_t* msg, int length) {
 
 	Serial.printf("Button press received from device %u cmd %02x\n", (unsigned int)pkt.device_id, pkt.cmd);
 
+	runtimeSetButton(pkt.device_id);
 	sendMQTTButtonEvent(pkt.device_id);
 	sendMQTTBridgeEvent();
 }
@@ -69,6 +75,7 @@ void handleError(uint8_t* msg, int length) {
 
 	sendMQTTDeviceState(ds);
 	updateDeviceDBState(ds);
+	runtimeSetState(ds);
 }
 
 void handleUpdateSIDMapResponse(uint8_t* msg, int length) {
@@ -76,6 +83,9 @@ void handleUpdateSIDMapResponse(uint8_t* msg, int length) {
 	copyPacket(&pkt, sizeof(pkt), msg, length, "SID map");
 
 	uint64_t sidmap = pkt.sidmap;
+	moduleInfo.sidmapReceived = true;
+	moduleInfo.sidmapAtMs = millis();
+	moduleInfo.sidmap = sidmap;
 	Serial.printf("Update SID Map received. SID map: %08x%08x\n", (uint32_t)(sidmap >> 32), (uint32_t)sidmap);
 
 	for (uint8_t sid = 0; sid < 64; sid++) {
@@ -113,6 +123,9 @@ void handleUpdateRemoteStatusResponse(uint8_t* msg, int length) {
 
 	// Set initial state for sensor. There is no way to query for a
 	// currently ongoing alarm, so always assume alarm is off
+	runtimeSetDiag(pkt.sid, pkt.device_id, pkt.battery1, pkt.battery2, pkt.rssi,
+		pkt.firmware_version, pkt.flags, pkt.radio_fault_count);
+	runtimeSetAlarm(pkt.device_id, false);
 	sendMQTTState(pkt.device_id, (char *)"alarm", false);
 }
 
@@ -132,6 +145,7 @@ void handleDiagnosticDetailsRemoteIdResponse(uint8_t* msg, int length) {
 
 	announceMQTTDevice(device);
 	insertDeviceDB(device);
+	runtimeSetInfo(device);
 
 	sendQueryDiagnosticDetails(pkt.sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
 }
@@ -153,6 +167,17 @@ void handleDiagnosticResponse(uint8_t* msg, int length) {
 
 	Serial.printf("Diagnostic response received\n");
 
+	moduleInfo.diagReceived = true;
+	moduleInfo.diagAtMs = millis();
+	moduleInfo.sid = pkt.sid;
+	moduleInfo.device_id = pkt.device_id;
+	moduleInfo.battery1 = pkt.battery1;
+	moduleInfo.battery2 = pkt.battery2;
+	moduleInfo.rssi = pkt.rssi;
+	moduleInfo.firmware_version = pkt.firmware_version;
+	moduleInfo.flags = pkt.flags;
+	moduleInfo.radio_fault_count = pkt.radio_fault_count;
+
 	if (pkt.device_id == 0x00) {
 		Serial.println("Module not initialized");
 	}
@@ -167,6 +192,7 @@ void handleDiagnosticResponse(uint8_t* msg, int length) {
 
 			// Clear SQLite database
 			resetDeviceDB();
+			runtimeClear();
 		}
 	}
 	Serial.printf("Setting own sid to %d\n", pkt.sid);
@@ -197,6 +223,8 @@ void handleRX(uint8_t* msg, int length) {
 
 	switch(msg[0]) {
 	case SPI_RX_REQUEST_WELCOME:
+		moduleInfo.welcomeCount++;
+		moduleInfo.lastWelcomeMs = millis();
 		sendWelcomeMsg();
 		break;
 	case SPI_RX_EVENT_ALARM:

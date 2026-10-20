@@ -4,6 +4,7 @@
 #include "wisafe2_rx.h"
 #include "wisafe2_tx.h"
 #include "wisafe2_packets.h"
+#include "module_info.h"
 
 #define DEBUG_SERIAL
 
@@ -49,8 +50,10 @@ void resetRXFrame() {
 
 void receiveSPIMessage(void (*rxCallback)(uint8_t*, int)) {
 	// Drop a half received frame so a lost byte cannot wedge the parser
-	if (binModeActivated && millis() - lastRxByteAt > RX_FRAME_TIMEOUT)
+	if (binModeActivated && millis() - lastRxByteAt > RX_FRAME_TIMEOUT) {
+		moduleInfo.rxFrameTimeouts++;
 		resetRXFrame();
+	}
 
 	while(Serial2.available()) {
 		uint8_t c = (uint8_t)Serial2.read();
@@ -74,6 +77,7 @@ void receiveSPIMessage(void (*rxCallback)(uint8_t*, int)) {
 		} else if (uartrxbufExpectedLength == 0) {
 			if (c == 0 || c > RXBUF_SIZE) {
 				// Invalid length, resynchronise
+				moduleInfo.rxBadLength++;
 				resetRXFrame();
 			} else {
 				uartrxbufExpectedLength = c;
@@ -87,6 +91,8 @@ void receiveSPIMessage(void (*rxCallback)(uint8_t*, int)) {
 #endif
 				int length = uartrxbufPos;
 				resetRXFrame();
+				moduleInfo.rxFrames++;
+				moduleInfo.lastRxMs = millis();
 				rxCallback(uartrxbuf, length);
 			}
 		}

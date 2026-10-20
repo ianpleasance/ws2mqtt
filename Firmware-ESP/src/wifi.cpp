@@ -1,6 +1,8 @@
 #include "config.h"
 #include "wifi_inc.h"
 #include "homeassistant.h"
+#include "mqtt_log.h"
+#include "sysinfo.h"
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -50,16 +52,23 @@ boolean reconnectMQTT() {
 	char clientid[32];
 	snprintf(clientid, sizeof(clientid), "ws2mqtt_%08x", DEVICE_ID);
 
+	mqttStats.connectAttempts++;
+
 	if (mqttClient.connect(clientid, MQTT_USERNAME, MQTT_PASSWORD, avtytopic, 0, true, "offline")) {
 		Serial.println("connected");
 
-		mqttClient.publish(avtytopic, "online", true);
+		mqttStats.connects++;
+		mqttStats.lastConnectMs = millis();
+
+		mqttPublish(avtytopic, "online", true, MQTT_CAT_EVENT);
 		mqttClient.subscribe(cmdtopic);
 		mqttClient.subscribe("homeassistant/status");
 
 		announceAllDevices();
 		publishAllCachedDeviceStates();
 	} else {
+		mqttStats.lastFailState = mqttClient.state();
+
 		Serial.print("failed, rc=");
 		Serial.print(mqttClient.state());
 		Serial.println(" try again in 5 seconds");
@@ -79,6 +88,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
 	memcpy(payloadChar, payload, length);
 	payloadChar[length] = '\0';
+
+	mqttStats.received++;
+	mqttLogAdd(MQTT_CAT_EVENT, true, topic, payloadChar, length, false, true);
 	snprintf(cmdtopic, sizeof(cmdtopic), "ws2mqtt/bridge_%08x/command", DEVICE_ID);
 
 	if (strcmp(topic, cmdtopic) == 0) { // If the callback is for the command topic

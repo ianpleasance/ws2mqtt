@@ -5,6 +5,7 @@
 #include "config.h"
 #include "wisafe2_packets.h"
 #include "spi_uart.h"
+#include "module_info.h"
 
 unsigned long lastTxAt = 0;
 
@@ -18,6 +19,7 @@ void handleTX(uint8_t* msg, int length) {
 
     if (length > TXBUF_SIZE) {
         Serial.printf("TX message too long (%d bytes), dropping\n", length);
+        moduleInfo.txDropped++;
         return;
     }
     memcpy(&txbuf, msg, length);
@@ -29,6 +31,7 @@ void handleTX(uint8_t* msg, int length) {
 void enqueueSPIMessage(uint8_t* msg) {
     if (txQueue[txQueueInsertPos][0] != 0x00) {
         Serial.println("TX queue full, dropping message");
+        moduleInfo.txDropped++;
         return;
     }
     memcpy(txQueue[txQueueInsertPos++], msg, TXBUF_SIZE);
@@ -136,6 +139,14 @@ void sendQueryDiagnosticDetails(uint8_t sid, uint8_t subsubtype) {
     handleTX((uint8_t*)&pkt, sizeof(pkt));
 }
 
+int txQueueDepth() {
+    int depth = 0;
+    for (int i = 0; i < TX_QUEUE_SIZE; i++)
+        if (txQueue[i][0] != 0x00)
+            depth++;
+    return depth;
+}
+
 void loopTX() {
     if ((millis() - lastTxAt > TX_MESSAGE_DELAY) &&
         txQueue[txQueueSendPos][0] != 0x00) {
@@ -148,5 +159,7 @@ void loopTX() {
         txQueueSendPos %= TX_QUEUE_SIZE;
 
         lastTxAt = millis();
+        moduleInfo.txSent++;
+        moduleInfo.lastTxMs = lastTxAt;
     }
 }

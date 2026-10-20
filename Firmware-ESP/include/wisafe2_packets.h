@@ -10,6 +10,8 @@ const uint8_t SPI_STOP_WORD = 0x7E;
 
 const uint8_t DEVICE_TYPE_CO = 0x41;
 const uint8_t DEVICE_TYPE_SMOKE = 0x81;
+const uint8_t DEVICE_TYPE_HEAT = 0x82;
+const uint8_t DEVICE_TYPE_CONTROL_UNIT = 0xC4;
 const uint8_t DEVICE_TYPE_ALL = 0xFF;
 
 const uint16_t MODEL_WST630    = 0x0311;
@@ -18,6 +20,8 @@ const uint16_t MODEL_FP1720W2R = 0x0411;
 const uint16_t MODEL_ST630DE   = 0x047C;
 const uint16_t MODEL_W2SVP630  = 0x04C3;
 const uint16_t MODEL_FP2620W2  = 0x08ED;
+const uint16_t MODEL_FP2620W2R = 0x0E34;
+const uint16_t MODEL_ALARM_CONTROL_UNIT = 0x0445;
 
 const uint8_t SPI_RX_REQUEST_WELCOME = 0x41;
 
