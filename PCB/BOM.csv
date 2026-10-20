@@ -1,0 +1,9 @@
+Designator,Comment,LCSC Part #,Footprint
+U1A,2.54mm 1x19 female socket vertical THT,C319202,2.54-1*19PFemale
+U1B,2.54mm 1x19 female socket vertical THT,C319202,2.54-1*19PFemale
+U2A,2.54mm 1x12 female socket vertical THT 8.5mm,C55020531,AM-PM2.54-V10-1*12P
+U2B,2.54mm 1x12 female socket vertical THT 8.5mm,C55020531,AM-PM2.54-V10-1*12P
+J3A,2.54mm 2x5 female socket vertical THT 8.5mm,C2977587,2.54-2*5
+J3B,2.54mm 1x2 female socket vertical THT 8.5mm,C2897365,PM254-1-02-Z-8.5
+J1,2.54mm 2x3 male pin header vertical THT,C5116479,2.54-2*3
+J2,2.54mm 2x5 male pin header vertical THT,C492422,PZ254V-12-10P
