@@ -34,6 +34,11 @@ int db_open(const char *filename, sqlite3 **db) {
 
 char *zErrMsg = 0;
 int db_exec(sqlite3 *db, const char *sql) {
+	if (db == NULL) {
+		Serial.println("Database not open, cannot run SQL");
+		return SQLITE_ERROR;
+	}
+
 	Serial.println(sql);
 
 	int rc = sqlite3_exec(db, sql, callback, (void*)data, &zErrMsg);
@@ -72,7 +77,10 @@ int getDeviceFromDB(uint8_t sid, device_t* device) {
 	char sql[128];
 	int rc;
 
-	sprintf(sql, "SELECT * FROM devices WHERE sid = %d LIMIT 1", (unsigned char)sid);
+	if (deviceDB == NULL)
+		return SQLITE_ERROR;
+
+	snprintf(sql, sizeof(sql), "SELECT * FROM devices WHERE sid = %d LIMIT 1", (unsigned char)sid);
 	rc = sqlite3_exec(deviceDB, sql, callbackGetDeviceFromDB, (void*)device, &zErrMsg);
 
 	if (rc != SQLITE_OK) {
@@ -87,7 +95,7 @@ static int callbackGetAllDevicesFromDB(void *data, int argc, char **argv, char *
 	device_t device;
 	memset(&device, 0, sizeof(device));
 
-	int (*callback)(device_t device) = (int(*)(device_t device)) data;
+	void (*callback)(device_t device) = (void(*)(device_t device)) data;
 
 	for (int i = 0; i<argc; i++){
 		// Ignore NULL values
@@ -112,7 +120,7 @@ static int callbackGetAllDeviceStatesFromDB(void *data, int argc, char **argv, c
 	device_state_t ds;
 	memset(&ds, 0, sizeof(ds));
 
-	int (*callback)(device_state_t ds) = (int(*)(device_state_t ds)) data;
+	void (*callback)(device_state_t ds) = (void(*)(device_state_t ds)) data;
 
 	Serial.println("Found a matching device state!");
 	for (int i = 0; i<argc; i++){
@@ -143,6 +151,9 @@ static int callbackGetAllDeviceStatesFromDB(void *data, int argc, char **argv, c
 int getAllDevicesFromDB(void (*callback)(device_t device)) {
 	int rc;
 
+	if (deviceDB == NULL)
+		return SQLITE_ERROR;
+
 	sqlite3_initialize();
 
 	rc = sqlite3_exec(deviceDB, "SELECT * FROM devices WHERE device_type IS NOT NULL;", callbackGetAllDevicesFromDB, (void*)callback, &zErrMsg);
@@ -158,6 +169,9 @@ int getAllDevicesFromDB(void (*callback)(device_t device)) {
 int getAllDeviceStatesFromDB(void (*callback)(device_state_t ds)) {
 	int rc;
 
+	if (deviceDB == NULL)
+		return SQLITE_ERROR;
+
 	sqlite3_initialize();
 
 	rc = sqlite3_exec(deviceDB, "SELECT * FROM devices WHERE generic_error IS NOT NULL;", callbackGetAllDeviceStatesFromDB, (void*)callback, &zErrMsg);
@@ -172,6 +186,9 @@ int getAllDeviceStatesFromDB(void (*callback)(device_state_t ds)) {
 
 void resetDeviceDB() {
 	Serial.println("Resetting device DB");
+
+	if (deviceDB == NULL)
+		return;
 
 	sqlite3_db_config(deviceDB, SQLITE_DBCONFIG_RESET_DATABASE, 1, 0);
 	sqlite3_exec(deviceDB, "VACUUM", 0, 0, 0);
@@ -205,8 +222,12 @@ void connectDeviceDB() {
 
 	sqlite3_initialize();
 
-	if (db_open("/spiffs/devices.db", &deviceDB))
-		return;
+	if (db_open("/spiffs/devices.db", &deviceDB)) {
+		// sqlite3_open hands back a handle even on failure; release it so
+		// the NULL checks elsewhere work
+		sqlite3_close(deviceDB);
+		deviceDB = NULL;
+	}
 }
 
 void migrateDeviceDB() {
@@ -216,18 +237,18 @@ void migrateDeviceDB() {
 
 void updateDeviceDBState(device_state_t ds) {
 	char sql[400];
-	sprintf(sql, "INSERT OR IGNORE INTO devices (sid) VALUES (%d)", ds.sid);
+	snprintf(sql, sizeof(sql), "INSERT OR IGNORE INTO devices (sid) VALUES (%d)", ds.sid);
 	db_exec(deviceDB, sql);
 
-	sprintf(sql, "UPDATE devices SET device_id=%d, generic_error=%d, docked=%d, sensor_battery_error=%d, radio_module_battery_error=%d WHERE sid = %d", ds.device_id, ds.generic_error, ds.docked, ds.sensor_battery, ds.radio_module_battery, ds.sid);
+	snprintf(sql, sizeof(sql), "UPDATE devices SET device_id=%d, generic_error=%d, docked=%d, sensor_battery_error=%d, radio_module_battery_error=%d WHERE sid = %d", (int)ds.device_id, ds.generic_error, ds.docked, ds.sensor_battery, ds.radio_module_battery, ds.sid);
 	db_exec(deviceDB, sql);
 }
 
 void insertDeviceDB(device_t device) {
 	char sql[400];
-	sprintf(sql, "INSERT OR IGNORE INTO devices (sid) VALUES (%d)", device.sid);
+	snprintf(sql, sizeof(sql), "INSERT OR IGNORE INTO devices (sid) VALUES (%d)", device.sid);
 	db_exec(deviceDB, sql);
 
-	sprintf(sql, "UPDATE devices SET device_id=%d, model=%d, device_type=%d WHERE sid = %d;", device.device_id, device.model, device.device_type, device.sid);
+	snprintf(sql, sizeof(sql), "UPDATE devices SET device_id=%d, model=%d, device_type=%d WHERE sid = %d;", (int)device.device_id, device.model, device.device_type, device.sid);
 	db_exec(deviceDB, sql);
 }

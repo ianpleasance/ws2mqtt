@@ -8,6 +8,20 @@ extern PubSubClient mqttClient;
 
 unsigned long lastSensorPush = 0;
 
+// Serialise a discovery document, refusing to publish a config that was
+// silently truncated (ArduinoJson drops members once the document is full)
+static bool serializeDiscovery(JsonDocument& doc, char* out, size_t outSize) {
+	if (doc.overflowed()) {
+		Serial.println("Discovery config too large for JSON document, not publishing");
+		return false;
+	}
+	if (serializeJson(doc, out, outSize) >= outSize) {
+		Serial.println("Discovery config too large for output buffer, not publishing");
+		return false;
+	}
+	return true;
+}
+
 void announceAllDevices() {
 	announceMQTTBridge();
 	announceMQTTBridgeEntities();
@@ -20,7 +34,7 @@ void publishAllCachedDeviceStates() {
 }
 
 void announceMQTTBridge() {
-	StaticJsonDocument<500> doc;
+	StaticJsonDocument<768> doc;
 
 	// Create device
 	JsonObject dev = doc.createNestedObject("dev");
@@ -35,8 +49,9 @@ void announceMQTTBridge() {
 	doc["t"] = eventtopic;
 	doc["pl"] = "alarm";
 
-	char msg[500];
-	serializeJson(doc, msg, 500);
+	char msg[800];
+	if (!serializeDiscovery(doc, msg, sizeof(msg)))
+		return;
 
 	if (mqttClient.connected()) {
 		char topic[200];
@@ -79,7 +94,7 @@ void announceMQTTBridgeEntities() {
 }
 
 void announceMQTTBridgeButtonEntity(char* name, char* command, bool diagnostic, bool enabled, char* icon) {
-	StaticJsonDocument<500> doc;
+	StaticJsonDocument<768> doc;
 
 	char avtytopic[200];
 	sprintf(avtytopic, "ws2mqtt/bridge_%08x/state", DEVICE_ID);
@@ -103,8 +118,9 @@ void announceMQTTBridgeButtonEntity(char* name, char* command, bool diagnostic, 
 	sprintf(uniq_id, "ws2mqtt_bridge_command_%s", command);
 	doc["uniq_id"] = uniq_id;
 
-	char msg[500];
-	serializeJson(doc, msg, 500);
+	char msg[800];
+	if (!serializeDiscovery(doc, msg, sizeof(msg)))
+		return;
 
 	if (mqttClient.connected()) {
 		char topic[200];
@@ -115,7 +131,7 @@ void announceMQTTBridgeButtonEntity(char* name, char* command, bool diagnostic, 
 }
 
 void announceMQTTBridgeSensorEntity(char* name, char* sensor, char* dev_class, char* unit, bool diagnostic, bool enabled, char* icon) {
-	StaticJsonDocument<500> doc;
+	StaticJsonDocument<768> doc;
 
 	char avtytopic[200];
 	sprintf(avtytopic, "ws2mqtt/bridge_%08x/state", DEVICE_ID);
@@ -130,9 +146,9 @@ void announceMQTTBridgeSensorEntity(char* name, char* sensor, char* dev_class, c
 	if (!enabled)
 		doc["en"] = false;
 	doc["icon"] = icon;
-	if (dev_class!="None")
+	if (strcmp(dev_class, "None") != 0)
 		doc["dev_cla"] = dev_class;
-	if (unit!="None")
+	if (strcmp(unit, "None") != 0)
 		doc["unit_of_meas"] = unit;
 	char stattopic[200];
 	sprintf(stattopic, "ws2mqtt/bridge_%08x/%s", DEVICE_ID, sensor);
@@ -142,8 +158,9 @@ void announceMQTTBridgeSensorEntity(char* name, char* sensor, char* dev_class, c
 	sprintf(uniq_id, "ws2mqtt_bridge_sensor_%s", sensor);
 	doc["uniq_id"] = uniq_id;
 
-	char msg[500];
-	serializeJson(doc, msg, 500);
+	char msg[800];
+	if (!serializeDiscovery(doc, msg, sizeof(msg)))
+		return;
 
 	if (mqttClient.connected()) {
 		char topic[200];
@@ -180,8 +197,8 @@ void loopBridgeSensors () {
 		sendMQTTBridgeSensor((char*)"ip_addr", (char*)WiFi.localIP().toString().c_str());
 
 		// RSSI
-		char rssi[5];
-		sprintf(rssi, "%d", (int)WiFi.RSSI());
+		char rssi[12];
+		snprintf(rssi, sizeof(rssi), "%d", (int)WiFi.RSSI());
 		sendMQTTBridgeSensor((char*)"rssi", (char*)rssi);
 
 		// MAC Address
@@ -195,12 +212,12 @@ void loopBridgeSensors () {
 		sendMQTTBridgeSensor((char*)"ssid", (char*)WiFi.SSID().c_str());
 
 		// Uptime
-		char uptime[5];
-		sprintf(uptime, "%d", esp_timer_get_time()/1000000);
+		char uptime[24];
+		snprintf(uptime, sizeof(uptime), "%lu", (unsigned long)(esp_timer_get_time() / 1000000));
 		sendMQTTBridgeSensor((char*)"esp_uptime", (char*)uptime);
 
 		esp_reset_reason_t reason = esp_reset_reason();
-		char reason_str[20];
+		char reason_str[24];
 		switch (reason)
 		{
 		case ESP_RST_POWERON:
@@ -213,7 +230,7 @@ void loopBridgeSensors () {
 			sprintf(reason_str, "%s", "Exception/Panic");
 			break;
 		case ESP_RST_INT_WDT:
-			sprintf(reason_str, "%s", "Interupt Watchdog");
+			sprintf(reason_str, "%s", "Interrupt Watchdog");
 			break;
 		case ESP_RST_TASK_WDT:
 			sprintf(reason_str, "%s", "Task Watchdog");
@@ -229,7 +246,7 @@ void loopBridgeSensors () {
 			break;
 		
 		default:
-			sprintf(reason_str, "%s", "Uknown");
+			sprintf(reason_str, "%s", "Unknown");
 			break;
 		}
 		sendMQTTBridgeSensor((char*)"esp_reset_reason", (char*)reason_str);
@@ -273,8 +290,8 @@ void announceMQTTDevice(device_t device) {
 }
 
 void addDeviceDescription(JsonObject dev, device_t device) {
-	char devid[16];
-	sprintf(devid, "ws2mqtt_%d", device.device_id);
+	char devid[32];
+	snprintf(devid, sizeof(devid), "ws2mqtt_%u", (unsigned int)device.device_id);
 	dev["ids"] = devid;
 
 	char* manufacturer = (char *)"FireAngel";
@@ -287,7 +304,7 @@ void addDeviceDescription(JsonObject dev, device_t device) {
 	dev["via_device"] = bridgeid;
 
 	char devname[128];
-	sprintf(devname, "%s %s %d", manufacturer, model, device.device_id);
+	snprintf(devname, sizeof(devname), "%s %s %u", manufacturer, model, (unsigned int)device.device_id);
 	dev["name"] = devname;
 }
 
@@ -298,7 +315,7 @@ void announceMQTTBinarySensor(
 	char* short_name,
 	bool diagnostic
 ) {
-	StaticJsonDocument<500> doc;
+	StaticJsonDocument<768> doc;
 
 	char avtytopic[200];
 	sprintf(avtytopic, "ws2mqtt/bridge_%08x/state", DEVICE_ID);
@@ -309,7 +326,7 @@ void announceMQTTBinarySensor(
 
 	char sensor_name[128];
 	char* model = modelString(device.model);
-	sprintf(sensor_name, "%s %d %s", model, device.device_id, name);
+	snprintf(sensor_name, sizeof(sensor_name), "%s %u %s", model, (unsigned int)device.device_id, name);
 	doc["name"] = sensor_name;
 
 	doc["dev_cla"] = device_class;
@@ -317,19 +334,20 @@ void announceMQTTBinarySensor(
 		doc["entity_category"] = "diagnostic";
 
 	char stat_t[128];
-	sprintf(stat_t, "ws2mqtt/%d/%s/state", device.device_id, short_name);
+	snprintf(stat_t, sizeof(stat_t), "ws2mqtt/%u/%s/state", (unsigned int)device.device_id, short_name);
 	doc["stat_t"] = stat_t;
 
 	char uniq_id[128];
-	sprintf(uniq_id, "%d_%s_ws2mqtt", device.device_id, short_name);
+	snprintf(uniq_id, sizeof(uniq_id), "%u_%s_ws2mqtt", (unsigned int)device.device_id, short_name);
 	doc["uniq_id"] = uniq_id;
 
-	char msg[500];
-	serializeJson(doc, msg, 500);
+	char msg[800];
+	if (!serializeDiscovery(doc, msg, sizeof(msg)))
+		return;
 
 	if (mqttClient.connected()) {
 		char topic[200];
-		sprintf(topic, HA_AUTODISCOVERY_PREFIX"/binary_sensor/ws2mqtt_%d/%s/config", device.device_id, short_name);
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/binary_sensor/ws2mqtt_%u/%s/config", (unsigned int)device.device_id, short_name);
 		Serial.println(topic);
 		mqttClient.publish(topic, msg, true);
 	}
@@ -338,7 +356,7 @@ void announceMQTTBinarySensor(
 void sendMQTTState(uint32_t device_id, char* short_name, bool state) {
 	if (mqttClient.connected()) {
 		char topic[200];
-		sprintf(topic, "ws2mqtt/%d/%s/state", device_id, short_name);
+		snprintf(topic, sizeof(topic), "ws2mqtt/%u/%s/state", (unsigned int)device_id, short_name);
 		mqttClient.publish(topic, state ? "ON" : "OFF");
 	}
 }
@@ -351,7 +369,7 @@ void sendMQTTDeviceState(device_state_t ds) {
 }
 
 void announceMQTTButtonEvent(device_t device) {
-	StaticJsonDocument<500> doc;
+	StaticJsonDocument<768> doc;
 
 	// Create device
 	JsonObject dev = doc.createNestedObject("dev");
@@ -362,16 +380,17 @@ void announceMQTTButtonEvent(device_t device) {
 	doc["subtype"] = "button_1";
 
 	char t[128];
-	sprintf(t, "ws2mqtt/%d/event", device.device_id);
+	snprintf(t, sizeof(t), "ws2mqtt/%u/event", (unsigned int)device.device_id);
 	doc["t"] = t;
 	doc["pl"] = "test_button";
 
-	char msg[500];
-	serializeJson(doc, msg, 500);
+	char msg[800];
+	if (!serializeDiscovery(doc, msg, sizeof(msg)))
+		return;
 
 	if (mqttClient.connected()) {
 		char topic[200];
-		sprintf(topic, HA_AUTODISCOVERY_PREFIX"/device_automation/ws2mqtt_%d/test_button/config", device.device_id);
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/device_automation/ws2mqtt_%u/test_button/config", (unsigned int)device.device_id);
 		mqttClient.publish(topic, msg, true);
 	}
 }
@@ -379,7 +398,7 @@ void announceMQTTButtonEvent(device_t device) {
 void sendMQTTButtonEvent(uint32_t device_id) {
 	if (mqttClient.connected()) {
 		char topic[200];
-		sprintf(topic, "ws2mqtt/%d/event", device_id);
+		snprintf(topic, sizeof(topic), "ws2mqtt/%u/event", (unsigned int)device_id);
 		mqttClient.publish(topic, "test_button");
 	}
 }
@@ -398,9 +417,9 @@ void removeMQTTDevice(device_t device) {
 void removeMQTTBinarySensor(device_t device, char* short_name) {
 	if (mqttClient.connected()) {
 		char topic[200];
-		sprintf(topic, HA_AUTODISCOVERY_PREFIX"/binary_sensor/ws2mqtt_%d/%s/config", device.device_id, short_name);
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/binary_sensor/ws2mqtt_%u/%s/config", (unsigned int)device.device_id, short_name);
 		Serial.println(topic);
-		mqttClient.publish(topic, NULL, true);
+		mqttClient.publish(topic, "", true);
 	} 
 	
 }
@@ -408,38 +427,38 @@ void removeMQTTBinarySensor(device_t device, char* short_name) {
 void removeMQTTButtonEvent(device_t device) {
 	if (mqttClient.connected()) {
 		char topic[200];
-		sprintf(topic, HA_AUTODISCOVERY_PREFIX"/device_automation/ws2mqtt_%d/test_button/config", device.device_id);
-		mqttClient.publish(topic, NULL, true);
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/device_automation/ws2mqtt_%u/test_button/config", (unsigned int)device.device_id);
+		mqttClient.publish(topic, "", true);
 	}
 }
 
 void handleMQTTCommand(char* command) {
-	if (strncmp(command, "test_devices", 12) == 0) {
+	if (strcmp(command, "test_devices") == 0) {
 		sendTestButtonMsg(DEVICE_TYPE_ALL);
 	} 
-	else if (strncmp(command, "test_smoke", 10) == 0) { 
+	else if (strcmp(command, "test_smoke") == 0) { 
 		sendTestButtonMsg(DEVICE_TYPE_SMOKE);
 	} 
-	else if (strncmp(command, "test_co", 7) == 0) { 
+	else if (strcmp(command, "test_co") == 0) { 
 		sendTestButtonMsg(DEVICE_TYPE_CO);
 	} 
 #ifdef ENABLE_SILENCE_ALARM
-	else if (strncmp(command, "silence_smoke", 13) == 0) {
+	else if (strcmp(command, "silence_smoke") == 0) {
 		sendSilenceButtonMsg(DEVICE_TYPE_SMOKE);
 	} 
-	else if (strncmp(command, "silence_co", 10) == 0) {
+	else if (strcmp(command, "silence_co") == 0) {
 		sendSilenceButtonMsg(DEVICE_TYPE_CO);
 	}
 #endif
 #ifdef ENABLE_TRIGGER_ALARM
-	else if (strncmp(command, "emergency_smoke", 15) == 0) {
+	else if (strcmp(command, "emergency_smoke") == 0) {
 		sendEmergencyButtonMsg(DEVICE_TYPE_SMOKE);
 	}
-	else if (strncmp(command, "emergency_co", 12) == 0) {
+	else if (strcmp(command, "emergency_co") == 0) {
 		sendEmergencyButtonMsg(DEVICE_TYPE_CO);
 	}
 #endif
-	else if (strncmp(command, "esp_restart", 11) ==0) {
+	else if (strcmp(command, "esp_restart") == 0) {
 		ESP.restart();
 	}
 
@@ -453,6 +472,6 @@ char* modelString(uint16_t model_id) {
 	case MODEL_W2CO10X: return (char *)"W2-CO-10X";
 	case MODEL_W2SVP630: return (char *)"W2-SVP-630";
 	case MODEL_FP1720W2R: return (char *)"FP1720W2-R";
-	default: return (char *)"Unkown";
+	default: return (char *)"Unknown";
 	}
 }

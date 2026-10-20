@@ -1,6 +1,8 @@
 #ifndef WISAFE2_TX_H
 #define WISAFE2_TX_H 1
 
+#include <stdint.h>
+
 // Maximum length of a single SPI message
 #define TXBUF_SIZE 32
 

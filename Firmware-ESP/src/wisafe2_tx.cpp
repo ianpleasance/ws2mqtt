@@ -14,6 +14,12 @@ int txQueueSendPos = 0;
 
 void handleTX(uint8_t* msg, int length) {
     uint8_t txbuf[TXBUF_SIZE];
+    memset(txbuf, 0, sizeof(txbuf));
+
+    if (length > TXBUF_SIZE) {
+        Serial.printf("TX message too long (%d bytes), dropping\n", length);
+        return;
+    }
     memcpy(&txbuf, msg, length);
 
     escapeMessage(txbuf, length);
@@ -21,6 +27,10 @@ void handleTX(uint8_t* msg, int length) {
 }
 
 void enqueueSPIMessage(uint8_t* msg) {
+    if (txQueue[txQueueInsertPos][0] != 0x00) {
+        Serial.println("TX queue full, dropping message");
+        return;
+    }
     memcpy(txQueue[txQueueInsertPos++], msg, TXBUF_SIZE);
     txQueueInsertPos %= TX_QUEUE_SIZE;
 }
@@ -112,7 +122,7 @@ void sendQuerySIDMap() {
 }
 
 void sendQueryDiagnosticDetails(uint8_t sid, uint8_t subsubtype) {
-    Serial.printf(" Querying remote status for SID %d subsubtype %d\n", sid, subsubtype);
+    Serial.printf(" Querying remote details for SID %d subtype %d\n", sid, subsubtype);
 
     pkt_tx_diagnostic_details_2arg_t pkt;
     memset(&pkt, 0, sizeof(pkt));

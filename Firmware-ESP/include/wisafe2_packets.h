@@ -1,6 +1,7 @@
 #ifndef WISAFE_2_PACKETS_H
 #define WISAFE_2_PACKETS_H 1
 
+#include <stdint.h>
 #include "config.h"
 #pragma pack(push)
 #pragma pack(1)

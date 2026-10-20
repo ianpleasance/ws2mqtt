@@ -5,6 +5,10 @@
 unsigned char escapeMessage(uint8_t* msg, unsigned char length) {
 	unsigned char outidx = 0;
 	uint8_t input[TXBUF_SIZE];
+
+	// Never copy more than the working buffer can hold
+	if (length > TXBUF_SIZE)
+		length = TXBUF_SIZE;
 	memcpy(&input, msg, length);
 
 	for (int i = 0; i < length; i++) {
@@ -30,8 +34,13 @@ unsigned char unescapeMessage(uint8_t* msg, unsigned char length) {
 
 	for (int i = 0; i < length; i++) {
 		uint8_t c = msg[i];
-		if (c == 0x7D)
+		if (c == 0x7D) {
+			// An escape byte at the very end of the message has nothing
+			// to escape, so drop it rather than reading past the buffer
+			if (i + 1 >= length)
+				break;
 			c = (msg[++i] == 0x01 ? 0x7E : 0x7D);
+		}
 		msg[outidx++] = c;
 	}
 

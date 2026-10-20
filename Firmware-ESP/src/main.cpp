@@ -9,6 +9,7 @@
 #include "wisafe2_tx.h"
 #include "device_db.h"
 
+int ownSid = -1;
 unsigned long lastSIDMapRequestedAt = 0;
 
 void setup() {

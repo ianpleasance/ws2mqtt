@@ -1,6 +1,8 @@
 #ifndef SPI_UART_H
 #define SPI_UART_H 1
 
+#include <stdint.h>
+
 void setupSPI();
 void sendSPIMessage(uint8_t* msg);
 void sendSPIMessage(uint8_t* msg, int length);

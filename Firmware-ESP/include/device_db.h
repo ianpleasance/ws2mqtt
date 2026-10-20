@@ -1,6 +1,7 @@
 #ifndef DEVICE_DB_H
 #define DEVICE_DB_H 1
 
+#include <stdint.h>
 #include "wisafe2_packets.h"
 
 typedef struct {

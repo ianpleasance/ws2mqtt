@@ -8,14 +8,27 @@
 #include "wisafe2_tx.h"
 #include "device_db.h"
 
-extern char ownSid;
+extern int ownSid;
 extern PubSubClient mqttClient;
+
+// Copies a received message into a packet struct. If the message is shorter
+// than the struct the remainder is zero filled (instead of reading stale bytes
+// from the RX buffer) and a warning is logged.
+static void copyPacket(void* dst, size_t dstSize, const uint8_t* msg, int length, const char* name) {
+	memset(dst, 0, dstSize);
+	if (length < (int)dstSize) {
+		Serial.printf("Warning: short %s packet (%d bytes, expected %d)\n", name, length, (int)dstSize);
+		memcpy(dst, msg, length > 0 ? length : 0);
+	} else {
+		memcpy(dst, msg, dstSize);
+	}
+}
 
 void handleAlarmEvent(uint8_t* msg, int length) {
 	pkt_rx_event_alarm_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "alarm");
 
-	Serial.printf("Alarm event received from device %d cmd %02x type %02x\n", (unsigned long)pkt.device_id, pkt.cmd, pkt.device_type);
+	Serial.printf("Alarm event received from device %u cmd %02x type %02x\n", (unsigned int)pkt.device_id, pkt.cmd, pkt.device_type);
 
 	sendMQTTState(pkt.device_id, (char *)"alarm", true);
 	sendMQTTBridgeEvent();
@@ -23,18 +36,18 @@ void handleAlarmEvent(uint8_t* msg, int length) {
 
 void handleAlarmOffEvent(uint8_t* msg, int length) {
 	pkt_rx_event_alarm_off_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "alarm off");
 
-	Serial.printf("Alarm off event received from device %d cmd %02x type %02x\n", (unsigned long)pkt.device_id, pkt.cmd, pkt.device_type);
+	Serial.printf("Alarm off event received from device %u cmd %02x type %02x\n", (unsigned int)pkt.device_id, pkt.cmd, pkt.device_type);
 
 	sendMQTTState(pkt.device_id, (char *)"alarm", false);
 }
 
 void handleButtonEvent(uint8_t* msg, int length) {
 	pkt_rx_event_button_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "button");
 
-	Serial.printf("Button press received from device %d cmd %02x\n", (unsigned long)pkt.device_id, pkt.cmd);
+	Serial.printf("Button press received from device %u cmd %02x\n", (unsigned int)pkt.device_id, pkt.cmd);
 
 	sendMQTTButtonEvent(pkt.device_id);
 	sendMQTTBridgeEvent();
@@ -42,9 +55,9 @@ void handleButtonEvent(uint8_t* msg, int length) {
 
 void handleError(uint8_t* msg, int length) {
 	pkt_rx_error_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "error");
 
-	Serial.printf("Error received from device %d cmd %02x error %02x\n", (unsigned long)pkt.device_id, pkt.cmd, pkt.error_flags);
+	Serial.printf("Error received from device %u cmd %02x error %02x\n", (unsigned int)pkt.device_id, pkt.cmd, pkt.error_flags);
 
 	device_state_t ds;
 	ds.sid = pkt.sid;
@@ -60,12 +73,12 @@ void handleError(uint8_t* msg, int length) {
 
 void handleUpdateSIDMapResponse(uint8_t* msg, int length) {
 	pkt_rx_diagnostic_details_update_sidmap_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "SID map");
 
 	uint64_t sidmap = pkt.sidmap;
-	Serial.printf("Update SID Map received. SID map: %016x\n", sidmap);
+	Serial.printf("Update SID Map received. SID map: %08x%08x\n", (uint32_t)(sidmap >> 32), (uint32_t)sidmap);
 
-	for (char sid = 0; sid < 64; sid++) {
+	for (uint8_t sid = 0; sid < 64; sid++) {
 		if ((sidmap >> sid) & 0x01) {
 			Serial.printf(" Found SID %d\n", sid);
 			checkIfDeviceKnown(sid);
@@ -86,9 +99,7 @@ void checkIfDeviceKnown(uint8_t sid) {
 		Serial.println("Device not in DB, querying");
 		sendQueryDiagnosticDetails(sid, SPI_TX_DIAGNOSTIC_DETAILS_ID);
 	} else {
-		char out[128];
-		sprintf(out, "Device found, device_id: %d", device.device_id);
-		Serial.println(out);
+		Serial.printf("Device found, device_id: %u\n", (unsigned int)device.device_id);
 	}
 }
 
@@ -96,9 +107,9 @@ void checkIfDeviceKnown(uint8_t sid) {
 // => D4 06 xx ...
 void handleUpdateRemoteStatusResponse(uint8_t* msg, int length) {
 	pkt_rx_diagnostic_details_remote_status_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "remote status");
 
-	Serial.printf("Received diagnostic response for: %d\n", pkt.device_id);
+	Serial.printf("Received diagnostic response for: %u\n", (unsigned int)pkt.device_id);
 
 	// Set initial state for sensor. There is no way to query for a
 	// currently ongoing alarm, so always assume alarm is off
@@ -108,11 +119,12 @@ void handleUpdateRemoteStatusResponse(uint8_t* msg, int length) {
 // Response to D3 06 xx 01 7E
 void handleDiagnosticDetailsRemoteIdResponse(uint8_t* msg, int length) {
 	pkt_rx_diagnostic_details_remote_id_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "remote id");
 
-	Serial.printf("Received remote id for: %d\n", pkt.device_id);
+	Serial.printf("Received remote id for: %u\n", (unsigned int)pkt.device_id);
 
 	device_t device;
+	memset(&device, 0, sizeof(device));
 	device.device_id = pkt.device_id;
 	device.model = pkt.model;
 	device.device_type = pkt.device_type;
@@ -128,16 +140,16 @@ void handleDiagnosticDetailsRemoteIdResponse(uint8_t* msg, int length) {
 // => D4 09 xx ...
 void handleNewDeviceResponse(uint8_t* msg, int length) {
 	pkt_rx_diagnostic_details_new_device_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "new device");
 
-	Serial.printf("New device announced: %d sid %d\n", pkt.device_id, pkt.sid);
+	Serial.printf("New device announced: %u sid %d\n", (unsigned int)pkt.device_id, pkt.sid);
 	// TODO: Better handle sid <-> device_id mismatch / conflict
 	checkIfDeviceKnown(pkt.sid);
 }
 
 void handleDiagnosticResponse(uint8_t* msg, int length) {
 	pkt_rx_diagnostic_response_t pkt;
-	memcpy(&pkt, msg, sizeof(pkt));
+	copyPacket(&pkt, sizeof(pkt), msg, length, "diagnostic");
 
 	Serial.printf("Diagnostic response received\n");
 
@@ -162,6 +174,9 @@ void handleDiagnosticResponse(uint8_t* msg, int length) {
 }
 
 void handleDiagnosticDetailsResponse(uint8_t* msg, int length) {
+	if (length < 2)
+		return;
+
 	switch(msg[1]) {
 	case SPI_DIAGNOSTIC_DETAILS_UPDATE_SIDMAP:
 		handleUpdateSIDMapResponse(msg, length);
@@ -177,6 +192,8 @@ void handleDiagnosticDetailsResponse(uint8_t* msg, int length) {
 
 void handleRX(uint8_t* msg, int length) {
 	length = unescapeMessage((uint8_t*)msg, length);
+	if (length < 1)
+		return;
 
 	switch(msg[0]) {
 	case SPI_RX_REQUEST_WELCOME:
