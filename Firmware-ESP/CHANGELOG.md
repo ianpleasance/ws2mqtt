@@ -1,14 +1,14 @@
 ## Change Log
 
 ### V1.0.0
-- **Initial fork with Matt Freyer's changes incorporated
+- **Initial fork with Matt Freyer's changes incorporated**
 
 ### V1.0.1
-- **Minor fixes to allow code to compile under latest VS Code and PlatformIO
-- **Tested and deployed to a working environment
+- **Minor fixes to allow code to compile under latest VS Code and PlatformIO**
+- **Tested and deployed to a working environment**
 
 ### V1.1
-- No new features. This release fixes crashes, buffer overflows and parsing bugs, and corrects spelling. The WiSafe2 protocol behaviour is unchanged.
+- **No new features.** This release fixes crashes, buffer overflows and parsing bugs, and corrects spelling. The WiSafe2 protocol behaviour is unchanged.
 - **Crashes and memory safety**
   - Fixed a crash when a device is removed from Home Assistant.** Clearing a retained discovery config published a `NULL` payload, which called `strlen(NULL)`. It now publishes an empty retained payload.
   - Fixed an uptime buffer overflow. The uptime string overflowed after about 27.8 hours. The buffer is larger and the format is correct.
@@ -39,5 +39,6 @@
   - Added missing headers, includes and a function declaration.
 - **Upgrade notes**
   - Unknown-model devices were named "Unkown ..." in Home Assistant, and the name is now "Unknown ...". Existing entity IDs do not change, because the unique IDs are unchanged. Only the displayed names update.
-- **No configuration changes are required. Your existing `credentials.h` still works.**
+- **No configuration changes are required.**
+  - Your existing `credentials.h` still works.
 
