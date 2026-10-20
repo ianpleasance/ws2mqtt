@@ -6,6 +6,7 @@
 #include "mqtt_log.h"
 #include "sysinfo.h"
 #include "version.h"
+#include "bridge_sensors.h"
 
 extern PubSubClient mqttClient;
 
@@ -63,7 +64,24 @@ void announceMQTTBridge() {
 	}
 }
 
+// Sensors whose keys were renamed (now prefixed wifi_). The old discovery
+// configs and retained values are cleared so Home Assistant drops the old entities.
+static void removeLegacyBridgeSensors() {
+	static const char* legacy[] = {"ip_addr", "rssi", "mac_addr", "ssid"};
+	if (!mqttClient.connected())
+		return;
+	for (size_t i = 0; i < sizeof(legacy) / sizeof(legacy[0]); i++) {
+		char topic[200];
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/sensor/ws2mqtt_bridge_%08x/%s/config", DEVICE_ID, legacy[i]);
+		mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+		snprintf(topic, sizeof(topic), "ws2mqtt/bridge_%08x/%s", DEVICE_ID, legacy[i]);
+		mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+	}
+}
+
 void announceMQTTBridgeEntities() {
+	removeLegacyBridgeSensors();
+
 	// Test
 	announceMQTTBridgeButtonEntity((char*)"Test All Devices", (char*)"test_devices", false, true, (char*)"mdi:bell-cog"); //Test All Button
 	announceMQTTBridgeButtonEntity((char*)"Test Smoke Devices", (char*)"test_smoke", false, false, (char*)"mdi:bell-cog"); //Test Smoke Button
@@ -81,22 +99,14 @@ void announceMQTTBridgeEntities() {
 	announceMQTTBridgeButtonEntity((char*)"Emergency CO", (char*)"emergency_co", false, false, (char*)"mdi:bell-sleep"); //Emergency CO Button
 #endif
 
-	// WiFi Sensors
-	announceMQTTBridgeSensorEntity((char*)"IP Address", (char*)"ip_addr", (char*)"None", (char*)"None", true, true, (char*)"mdi:ip-network"); //IP Address Sensor
-	announceMQTTBridgeSensorEntity((char*)"RSSI", (char*)"rssi", (char*)"signal_strength", (char*)"dBm", true, true, (char*)"mdi:wifi"); //Wifi RSSI
-	announceMQTTBridgeSensorEntity((char*)"MAC Address", (char*)"mac_addr", (char*)"None", (char*)"None", true, true, (char*)"mdi:wifi"); //Wifi Mac Address
-	announceMQTTBridgeSensorEntity((char*)"SSID", (char*)"ssid", (char*)"None", (char*)"None", true, true, (char*)"mdi:wifi"); //Wifi SSID
-
-	// Restart
+	// Restart button
 	announceMQTTBridgeButtonEntity((char*)"ESP Restart", (char*)"esp_restart", true, false, (char*)"mdi:restart"); // Restart Button
-	announceMQTTBridgeSensorEntity((char*)"ESP Uptime", (char*)"esp_uptime", (char*)"duration", (char*)"s", true, false, (char*)"mdi:clock"); // Time since last restart
-	announceMQTTBridgeSensorEntity((char*)"ESP Restart Reason", (char*)"esp_reset_reason", (char*)"None", (char*)"None", true, false, (char*)"mdi:restart-alert");
 
-	// Firmware
-	announceMQTTBridgeSensorEntity((char*)"Firmware Version", (char*)"firmware_version", (char*)"None", (char*)"None", true, true, (char*)"mdi:tag"); // Firmware version
-
-	// ESP Info
-	announceMQTTBridgeSensorEntity((char*)"ESP Model", (char*)"esp_model", (char*)"None", (char*)"None", true, false, (char*)"mdi:chip"); // ESP Chip Model
+	// ESP32, network, MQTT and WiSafe module sensors (see bridge_sensors.cpp)
+	for (int i = 0; i < bridgeSensorCount(); i++) {
+		const bridge_sensor_t* s = bridgeSensor(i);
+		announceMQTTBridgeSensorEntity((char*)s->name, (char*)s->key, (char*)s->devClass, (char*)s->unit, true, s->enabled, (char*)s->icon);
+	}
 }
 
 void announceMQTTBridgeButtonEntity(char* name, char* command, bool diagnostic, bool enabled, char* icon) {
@@ -197,41 +207,46 @@ void sendMQTTBridgeEvent() {
 		mqttPublish(eventtopic, "alarm", false, MQTT_CAT_EVENT);
 }
 
+// Last value sent for each bridge sensor. A value is sent again when it changes,
+// or every BRIDGE_SENSOR_HEARTBEAT seconds, and everything is re-sent after the
+// MQTT connection is re-established.
+#define BRIDGE_SENSOR_MAX 64
+#define BRIDGE_SENSOR_VALUE_LEN 200
+#define BRIDGE_SENSOR_HEARTBEAT 300
+static char bridgeLastValue[BRIDGE_SENSOR_MAX][BRIDGE_SENSOR_VALUE_LEN];
+static bool bridgeSent[BRIDGE_SENSOR_MAX];
+static unsigned long bridgeSentAt[BRIDGE_SENSOR_MAX];
+static uint32_t bridgeSeenConnects = 0;
+
 void loopBridgeSensors () {
-	
-	if (millis() - lastSensorPush > BRIDGE_SENSOR_INTERVAL * 1000) {
-		// IP Address
-		sendMQTTBridgeSensor((char*)"ip_addr", (char*)WiFi.localIP().toString().c_str());
+	if (millis() - lastSensorPush <= BRIDGE_SENSOR_INTERVAL * 1000)
+		return;
+	lastSensorPush = millis();
 
-		// RSSI
-		char rssi[12];
-		snprintf(rssi, sizeof(rssi), "%d", (int)WiFi.RSSI());
-		sendMQTTBridgeSensor((char*)"rssi", (char*)rssi);
+	if (!mqttClient.connected())
+		return;
 
-		// MAC Address
-		byte mac[6]; 
-		WiFi.macAddress(mac);
-		char mac_char[20];
-		sprintf(mac_char, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-		sendMQTTBridgeSensor((char*)"mac_addr", (char*)mac_char);
+	if (mqttStats.connects != bridgeSeenConnects) {
+		bridgeSeenConnects = mqttStats.connects;
+		memset(bridgeSent, 0, sizeof(bridgeSent));
+	}
 
-		// SSID
-		sendMQTTBridgeSensor((char*)"ssid", (char*)WiFi.SSID().c_str());
+	int count = bridgeSensorCount();
+	if (count > BRIDGE_SENSOR_MAX)
+		count = BRIDGE_SENSOR_MAX;
 
-		// Uptime
-		char uptime[24];
-		snprintf(uptime, sizeof(uptime), "%lu", (unsigned long)uptimeSeconds());
-		sendMQTTBridgeSensor((char*)"esp_uptime", (char*)uptime);
-
-		sendMQTTBridgeSensor((char*)"esp_reset_reason", (char*)resetReasonString(esp_reset_reason()));
-
-		// Firmware version
-		sendMQTTBridgeSensor((char*)"firmware_version", (char*)FIRMWARE_VERSION);
-
-		// ESP Chip
-		sendMQTTBridgeSensor((char*)"esp_model", (char*)ESP.getChipModel());
-
-		lastSensorPush = millis();
+	char value[BRIDGE_SENSOR_VALUE_LEN];
+	for (int i = 0; i < count; i++) {
+		if (!bridgeSensorValue(i, value, sizeof(value)))
+			continue;
+		bool changed = !bridgeSent[i] || strcmp(value, bridgeLastValue[i]) != 0;
+		bool due = millis() - bridgeSentAt[i] > BRIDGE_SENSOR_HEARTBEAT * 1000UL;
+		if (!changed && !due)
+			continue;
+		sendMQTTBridgeSensor((char*)bridgeSensor(i)->key, value);
+		strcpy(bridgeLastValue[i], value);
+		bridgeSent[i] = true;
+		bridgeSentAt[i] = millis();
 	}
 }
 
@@ -241,7 +256,6 @@ void sendMQTTBridgeSensor (char* sensor, char* sensor_value) {
 		
 		char init_topic[200];
 		sprintf(init_topic, "ws2mqtt/bridge_%08x/%s", DEVICE_ID, sensor);
-		Serial.println(init_topic);
 		mqttPublish(init_topic, sensor_value, true, MQTT_CAT_HOUSEKEEPING);
 	}
 }
