@@ -8,6 +8,12 @@
 // How often new devices should be queried, in seconds.
 #define QUERY_NEW_DEVICES_INTERVAL 60
 
+// Ask known devices for their status when it is not yet known (after a reboot,
+// or if an earlier reply was lost). The reply fills in battery, signal and
+// fault data and sets the alarm state to "off", since the radio protocol cannot
+// report an alarm that is already sounding. Comment out to disable.
+#define QUERY_STATUS_FOR_KNOWN_DEVICES
+
 // Optional alarm controls from Home Assistant.
 // Keep these commented out to disable the features.
 // Only enable them after verifying that the corresponding packet definitions

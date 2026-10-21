@@ -1,5 +1,6 @@
 #include "Arduino.h"
 
+#include "config.h"
 #include "wisafe2_packets.h"
 #include "wifi_inc.h"
 #include "spi_uart.h"
@@ -110,6 +111,15 @@ void checkIfDeviceKnown(uint8_t sid) {
 		sendQueryDiagnosticDetails(sid, SPI_TX_DIAGNOSTIC_DETAILS_ID);
 	} else {
 		Serial.printf("Device found, device_id: %u\n", (unsigned int)device.device_id);
+#ifdef QUERY_STATUS_FOR_KNOWN_DEVICES
+		// The alarm state is only learned from an alarm message or a status
+		// reply. After a reboot (or a lost reply) ask the device for it.
+		device_runtime_t* rt = runtimeBySid(sid);
+		if (rt == NULL || !rt->alarmKnown) {
+			Serial.println("Status not known, querying");
+			sendQueryDiagnosticDetails(sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
+		}
+#endif
 	}
 }
 
