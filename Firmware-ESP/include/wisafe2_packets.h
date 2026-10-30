@@ -25,6 +25,11 @@ const uint16_t MODEL_ALARM_CONTROL_UNIT = 0x0445;
 
 const uint8_t SPI_RX_REQUEST_WELCOME = 0x41;
 
+// The module acknowledges a command (D3 ..) with "46 7E" straight away, and the
+// real reply (D4 ..) follows later if the device answers. Seen on real hardware
+// and in the pairing / erase examples of the radio analysis notes.
+const uint8_t SPI_RX_COMMAND_ACK = 0x46;
+
 const uint8_t SPI_RX_EVENT_ALARM = 0x50;
 typedef struct {
 	uint8_t cmd;

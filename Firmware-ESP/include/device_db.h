@@ -28,6 +28,9 @@ void migrateDeviceDB();
 void insertDeviceDB(device_t device);
 void updateDeviceDBState(device_state_t ds);
 
+// Remove one device (by sid) from the database
+void deleteDeviceDB(uint8_t sid);
+
 // Get a single device from the database by sid
 int getDeviceFromDB(uint8_t sid, device_t* device);
 

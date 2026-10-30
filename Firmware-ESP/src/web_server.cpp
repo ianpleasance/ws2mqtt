@@ -5,6 +5,8 @@
 #include "web_server.h"
 #include "web_page.h"
 #include "web_data.h"
+#include "device_manage.h"
+#include "wisafe2_tx.h"
 
 static WebServer server(80);
 
@@ -57,6 +59,11 @@ static void handleRoot() {
 	server.send_P(200, "text/html; charset=utf-8", WEB_INDEX_HTML);
 }
 
+static void handleFavicon() {
+	server.sendHeader("Cache-Control", "public, max-age=86400");
+	server.send_P(200, "image/svg+xml", WEB_FAVICON_SVG);
+}
+
 static void handleSystem() {
 	beginJson();
 	ChunkPrint out(server);
@@ -86,21 +93,60 @@ static void handleMqtt() {
 	endJson(out);
 }
 
-static void handleNoContent() {
-	server.send(204);
-}
-
 static void handleNotFound() {
 	server.send(404, "text/plain", "Not found");
 }
 
+// Write requests must carry a custom header. A web page on another site cannot
+// add one without a CORS preflight, which this server does not answer, so this
+// stops other sites from making a browser on your network change anything.
+static bool writeAllowed() {
+	if (server.header("X-Requested-With") != "ws2mqtt") {
+		server.send(403, "application/json", "{\"ok\":false,\"error\":\"forbidden\"}");
+		return false;
+	}
+	return true;
+}
+
+static void handleForget() {
+	if (!writeAllowed())
+		return;
+	String arg = server.arg("sid");
+	int sid = arg.toInt();
+	if (arg.length() == 0 || sid < 0 || sid > 63) {
+		server.send(400, "application/json", "{\"ok\":false,\"error\":\"bad sid\"}");
+		return;
+	}
+	if (!forgetDevice((uint8_t)sid)) {
+		server.send(404, "application/json", "{\"ok\":false,\"error\":\"no such device\"}");
+		return;
+	}
+	sendQuerySIDMap();
+	server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleForgetAll() {
+	if (!writeAllowed())
+		return;
+	int count = forgetAllDevices();
+	char body[48];
+	snprintf(body, sizeof(body), "{\"ok\":true,\"forgotten\":%d}", count);
+	server.send(200, "application/json", body);
+}
+
 void setupWeb() {
+	static const char* headerKeys[] = {"X-Requested-With"};
+	server.collectHeaders(headerKeys, 1);
+
 	server.on("/", HTTP_GET, handleRoot);
 	server.on("/data/system.json", HTTP_GET, handleSystem);
 	server.on("/data/module.json", HTTP_GET, handleModule);
 	server.on("/data/devices.json", HTTP_GET, handleDevices);
 	server.on("/data/mqtt.json", HTTP_GET, handleMqtt);
-	server.on("/favicon.ico", HTTP_GET, handleNoContent);
+	server.on("/api/forget", HTTP_POST, handleForget);
+	server.on("/api/forget-all", HTTP_POST, handleForgetAll);
+	server.on("/favicon.svg", HTTP_GET, handleFavicon);
+	server.on("/favicon.ico", HTTP_GET, handleFavicon);
 	server.onNotFound(handleNotFound);
 	server.begin();
 

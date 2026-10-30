@@ -394,6 +394,16 @@ void removeMQTTDevice(device_t device) {
 	removeMQTTBinarySensor(device, (char *)"generic_error");
 
 	removeMQTTButtonEvent(device);
+
+	// Clear the retained state of each entity as well
+	static const char* const states[] = {"alarm", "sensor_battery", "radio_module_battery", "docked", "generic_error"};
+	if (mqttClient.connected()) {
+		for (size_t i = 0; i < sizeof(states) / sizeof(states[0]); i++) {
+			char topic[200];
+			snprintf(topic, sizeof(topic), "ws2mqtt/%u/%s/state", (unsigned int)device.device_id, states[i]);
+			mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+		}
+	}
 }
 
 void removeMQTTBinarySensor(device_t device, char* short_name) {

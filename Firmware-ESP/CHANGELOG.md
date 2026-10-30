@@ -82,3 +82,26 @@
   - A device that already has a known state is never queried, so a real alarm is not overwritten. The radio protocol cannot report an alarm that is already sounding.
   - This is controlled by `QUERY_STATUS_FOR_KNOWN_DEVICES` in `include/config.h`. Comment it out to disable it.
 
+### V1.4.1
+- **Status queries are sent one at a time.** Previously every query was sent 0.5 seconds apart, and several devices went unanswered. The next query is now sent when the previous one is answered, reported as unanswered, or times out after 6 seconds.
+- **The module's "no answer" code is handled.** The radio module sends `0x46` when a device does not answer a query. The firmware used to ignore it. It is now counted against the device and logged.
+- **Devices are asked for their status when they transmit.** If a test press or an error or dock message arrives from a device whose alarm state is still unknown, a status query is queued straight away, while the device is awake. This uses the existing `QUERY_STATUS_FOR_KNOWN_DEVICES` setting.
+- **Web interface:** the "Last heard" column now shows status queries, replies, no-answers and the time of the last reply for each device, and `/data/devices.json` has a new `status_queries` object.
+- **New files:** `include/status_query.h` and `src/status_query.cpp`.
+
+### V1.4.2
+- **Fixed the module's `46 7E` code being treated as "no answer".** It is the module's immediate acknowledgement of a command, and the real reply follows if the device answers. A query now ends when its reply arrives or after the 6 second timeout, and "no answer" is counted only on a timeout. V1.4.1 ended the query on the acknowledgement, so queries were not really sent one at a time and the no-answer counts were wrong.
+- The acknowledgement is logged (`Module acknowledged query to SID n`).
+
+### V1.4.3
+- **Web interface favicon.** The browser tab now shows a small icon (a dot with radio waves on a teal square). It is an SVG served from the gateway at `/favicon.svg`, and `/favicon.ico` returns the same image, so browsers that ask for the old path still get it. The tab previously showed a blank icon.
+
+### V1.4.4
+- **Forget devices from the web interface.**
+  - A **Forget** button on each device row, and a **Forget all devices** button above the table. Both ask for confirmation.
+  - Forgetting a device removes its entities from Home Assistant (discovery configs and retained states), deletes it from the gateway's database and in-memory list, and cancels any queued status query for it.
+  - The gateway then rescans the radio network straight away, so a device that is still paired and answering is found again and re-announced. Devices that have been replaced or no longer answer stay out.
+  - New endpoints: `POST /api/forget?sid=<n>` and `POST /api/forget-all`. They only accept a request that carries an `X-Requested-With: ws2mqtt` header, which another website cannot add, so a page open in your browser cannot trigger them. There is still no login (that comes with the admin account in step 4).
+  - New files: `include/device_manage.h` and `src/device_manage.cpp`.
+- **Alarm Control Units now use their real model name, `WTSL-F-1EU`**, in the web interface and in Home Assistant. This renames the device and entity names; entity IDs and unique IDs do not change.
+

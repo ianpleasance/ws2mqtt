@@ -39,6 +39,13 @@ typedef struct {
 	uint8_t flags;
 	uint8_t radio_fault_count;
 
+	// Status queries sent to this device (0x00 remote status)
+	uint32_t statusQueries;
+	uint32_t statusReplies;
+	uint32_t statusNoAnswer;
+	uint32_t lastQueryMs;
+	uint32_t lastReplyMs;
+
 	// millis() timestamps, 0 = never
 	uint32_t lastSeenMs;
 	uint32_t lastAlarmMs;
@@ -55,10 +62,16 @@ void runtimeClear();
 device_runtime_t* runtimeBySid(uint8_t sid);
 device_runtime_t* runtimeByDeviceId(uint32_t device_id);
 
+// Forget one device
+void runtimeForget(uint8_t sid);
+
 void runtimeSetInfo(const device_t& device);
 void runtimeSetState(const device_state_t& ds);
 void runtimeSetAlarm(uint32_t device_id, bool alarm);
 void runtimeSetButton(uint32_t device_id);
+void runtimeQuerySent(uint8_t sid);
+void runtimeQueryReply(uint8_t sid);
+void runtimeQueryNoAnswer(uint8_t sid);
 void runtimeSetDiag(uint8_t sid, uint32_t device_id, uint8_t battery1, uint8_t battery2,
 	uint8_t rssi, uint8_t firmware_version, uint8_t flags, uint8_t radio_fault_count);
 

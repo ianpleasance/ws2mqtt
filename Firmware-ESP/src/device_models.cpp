@@ -44,7 +44,7 @@ static const model_info_t modelTable[] = {
 	{ MODEL_W2SVP630,           "W2-SVP-630"        },
 	{ MODEL_FP2620W2,           "FP2620W2"          },
 	{ MODEL_FP2620W2R,          "FP2620W2-R"        },
-	{ MODEL_ALARM_CONTROL_UNIT, "Alarm Control Unit" },
+	{ MODEL_ALARM_CONTROL_UNIT, "WTSL-F-1EU"        },
 };
 
 bool modelIsKnown(uint16_t model_id) {

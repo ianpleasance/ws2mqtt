@@ -8,6 +8,7 @@
 #include "wisafe2_rx.h"
 #include "wisafe2_tx.h"
 #include "device_db.h"
+#include "status_query.h"
 #include "device_runtime.h"
 #include "mqtt_log.h"
 #include "web_server.h"
@@ -50,5 +51,6 @@ void loop() {
 	loopWeb();
 
 	loopUpdateSIDMap();
+	loopQuery();
 	loopTX();
 }

@@ -9,6 +9,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WS2MQTT Gateway</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
 :root {
   --bg: #f4f5f7; --card: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6ec;
@@ -72,6 +73,10 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 
 
   <section class="card">
     <h2>WiSafe2 devices</h2>
+    <div class="bar">
+      <button id="forgetAllBtn" type="button">Forget all devices</button>
+      <span>Removes devices from this gateway and Home Assistant. Devices still on the radio network are found again within a minute.</span>
+    </div>
     <div class="scroll" id="devices"><div class="empty">Loading...</div></div>
   </section>
 
@@ -149,6 +154,14 @@ function get(url) {
   });
 }
 
+// Write requests need this header, which other websites cannot add
+function post(url) {
+  return fetch(url, { method: "POST", headers: { "X-Requested-With": "ws2mqtt" } }).then(function (r) {
+    if (!r.ok) throw new Error(url + " " + r.status);
+    return r.json();
+  });
+}
+
 function renderDevices(data) {
   var box = document.getElementById("devices");
   box.replaceChildren();
@@ -157,7 +170,7 @@ function renderDevices(data) {
     return 0;
   }
   var table = el("table"), head = el("tr");
-  ["SID", "Device ID", "Model", "Type", "Alarm", "Docked", "Faults", "Signal", "Last heard"].forEach(function (h) {
+  ["SID", "Device ID", "Model", "Type", "Alarm", "Docked", "Faults", "Signal", "Last heard", ""].forEach(function (h) {
     head.appendChild(el("th", null, h));
   });
   table.appendChild(head);
@@ -210,7 +223,24 @@ function renderDevices(data) {
     seen.appendChild(document.createTextNode(fmtAge(d.last_seen_age_ms)));
     if (d.last_alarm_age_ms !== null) seen.appendChild(el("div", "sub", "alarm " + fmtAge(d.last_alarm_age_ms)));
     if (d.last_button_age_ms !== null) seen.appendChild(el("div", "sub", "test " + fmtAge(d.last_button_age_ms)));
+    var sq = d.status_queries;
+    if (sq && sq.sent > 0) {
+      var txt = "status replies " + sq.replies + "/" + sq.sent;
+      if (sq.no_answer > 0) txt += ", no answer " + sq.no_answer;
+      if (sq.last_reply_age_ms !== null) txt += ", last reply " + fmtAge(sq.last_reply_age_ms);
+      seen.appendChild(el("div", "sub", txt));
+    }
     tr.appendChild(seen);
+
+    var act = el("td");
+    var fb = el("button", null, "Forget");
+    fb.type = "button";
+    fb.addEventListener("click", function () {
+      if (!confirm("Forget device " + d.device_id + " (SID " + d.sid + ")?\n\nIt is removed from this gateway and Home Assistant. If it is still on the radio network it will be found again within a minute.")) return;
+      post("/api/forget?sid=" + d.sid).then(refresh).catch(function () { alert("Could not forget the device"); });
+    });
+    act.appendChild(fb);
+    tr.appendChild(act);
 
     table.appendChild(tr);
   });
@@ -343,6 +373,11 @@ function refresh() {
     });
 }
 
+document.getElementById("forgetAllBtn").addEventListener("click", function () {
+  if (!confirm("Forget ALL devices?\n\nThey are removed from this gateway and Home Assistant. Devices still on the radio network are found again within a minute.")) return;
+  post("/api/forget-all").then(refresh).catch(function () { alert("Could not forget the devices"); });
+});
+
 document.getElementById("pauseBtn").addEventListener("click", function () {
   paused = !paused;
   this.textContent = paused ? "Resume" : "Pause";
@@ -356,3 +391,10 @@ tick();
 </body>
 </html>
 )HTML";
+
+const char WEB_FAVICON_SVG[] PROGMEM =
+	"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\">"
+	"<rect width=\"32\" height=\"32\" rx=\"7\" fill=\"#0f766e\"/>"
+	"<circle cx=\"16\" cy=\"16\" r=\"3.5\" fill=\"#fff\"/>"
+	"<path d=\"M10.5 10.5a7.8 7.8 0 0 0 0 11M21.5 10.5a7.8 7.8 0 0 1 0 11M6.5 6.5a13.4 13.4 0 0 0 0 19M25.5 6.5a13.4 13.4 0 0 1 0 19\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2.6\" stroke-linecap=\"round\"/>"
+	"</svg>";

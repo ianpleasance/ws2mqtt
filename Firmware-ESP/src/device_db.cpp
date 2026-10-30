@@ -252,3 +252,12 @@ void insertDeviceDB(device_t device) {
 	snprintf(sql, sizeof(sql), "UPDATE devices SET device_id=%d, model=%d, device_type=%d WHERE sid = %d;", (int)device.device_id, device.model, device.device_type, device.sid);
 	db_exec(deviceDB, sql);
 }
+
+void deleteDeviceDB(uint8_t sid) {
+	if (deviceDB == NULL)
+		return;
+
+	char sql[80];
+	snprintf(sql, sizeof(sql), "DELETE FROM devices WHERE sid = %d;", sid);
+	db_exec(deviceDB, sql);
+}

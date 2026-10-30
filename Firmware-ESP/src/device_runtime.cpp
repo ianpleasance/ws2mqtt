@@ -127,3 +127,32 @@ void runtimeLoadFromDB() {
 	getAllDevicesFromDB(loadDevice);
 	getAllDeviceStatesFromDB(loadDeviceState);
 }
+
+void runtimeQuerySent(uint8_t sid) {
+	device_runtime_t* d = runtimeBySid(sid);
+	if (d == NULL)
+		return;
+	d->statusQueries++;
+	d->lastQueryMs = millis();
+}
+
+void runtimeQueryReply(uint8_t sid) {
+	device_runtime_t* d = runtimeBySid(sid);
+	if (d == NULL)
+		return;
+	d->statusReplies++;
+	d->lastReplyMs = millis();
+}
+
+void runtimeQueryNoAnswer(uint8_t sid) {
+	device_runtime_t* d = runtimeBySid(sid);
+	if (d == NULL)
+		return;
+	d->statusNoAnswer++;
+}
+
+void runtimeForget(uint8_t sid) {
+	if (sid >= RUNTIME_MAX_SID)
+		return;
+	memset(&devices[sid], 0, sizeof(devices[sid]));
+}

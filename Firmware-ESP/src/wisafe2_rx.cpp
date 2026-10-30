@@ -7,6 +7,7 @@
 #include "wisafe2_escape.h"
 #include "wisafe2_rx.h"
 #include "wisafe2_tx.h"
+#include "status_query.h"
 #include "device_db.h"
 #include "device_runtime.h"
 #include "module_info.h"
@@ -47,6 +48,7 @@ void handleAlarmOffEvent(uint8_t* msg, int length) {
 
 	runtimeSetAlarm(pkt.device_id, false);
 	sendMQTTState(pkt.device_id, (char *)"alarm", false);
+	queryAnswered(pkt.sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
 }
 
 void handleButtonEvent(uint8_t* msg, int length) {
@@ -56,6 +58,8 @@ void handleButtonEvent(uint8_t* msg, int length) {
 	Serial.printf("Button press received from device %u cmd %02x\n", (unsigned int)pkt.device_id, pkt.cmd);
 
 	runtimeSetButton(pkt.device_id);
+	// The device is awake and in range, a good moment to ask for its status
+	queryStatusIfUnknown(pkt.device_id);
 	sendMQTTButtonEvent(pkt.device_id);
 	sendMQTTBridgeEvent();
 }
@@ -77,6 +81,7 @@ void handleError(uint8_t* msg, int length) {
 	sendMQTTDeviceState(ds);
 	updateDeviceDBState(ds);
 	runtimeSetState(ds);
+	queryStatusIfUnknown(pkt.device_id);
 }
 
 void handleUpdateSIDMapResponse(uint8_t* msg, int length) {
@@ -108,7 +113,7 @@ void checkIfDeviceKnown(uint8_t sid) {
 	getDeviceFromDB(sid, &device);
 	if (device.device_type == 0x00) {
 		Serial.println("Device not in DB, querying");
-		sendQueryDiagnosticDetails(sid, SPI_TX_DIAGNOSTIC_DETAILS_ID);
+		queryRequest(sid, SPI_TX_DIAGNOSTIC_DETAILS_ID);
 	} else {
 		Serial.printf("Device found, device_id: %u\n", (unsigned int)device.device_id);
 #ifdef QUERY_STATUS_FOR_KNOWN_DEVICES
@@ -116,8 +121,8 @@ void checkIfDeviceKnown(uint8_t sid) {
 		// reply. After a reboot (or a lost reply) ask the device for it.
 		device_runtime_t* rt = runtimeBySid(sid);
 		if (rt == NULL || !rt->alarmKnown) {
-			Serial.println("Status not known, querying");
-			sendQueryDiagnosticDetails(sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
+			Serial.println("Status not known, queueing query");
+			queryRequest(sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
 		}
 #endif
 	}
@@ -157,7 +162,8 @@ void handleDiagnosticDetailsRemoteIdResponse(uint8_t* msg, int length) {
 	insertDeviceDB(device);
 	runtimeSetInfo(device);
 
-	sendQueryDiagnosticDetails(pkt.sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
+	queryAnswered(pkt.sid, SPI_TX_DIAGNOSTIC_DETAILS_ID);
+	queryRequest(pkt.sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
 }
 
 // Automatically sent when new device joins network
@@ -236,6 +242,9 @@ void handleRX(uint8_t* msg, int length) {
 		moduleInfo.welcomeCount++;
 		moduleInfo.lastWelcomeMs = millis();
 		sendWelcomeMsg();
+		break;
+	case SPI_RX_COMMAND_ACK:
+		queryAcknowledged();
 		break;
 	case SPI_RX_EVENT_ALARM:
 		handleAlarmEvent(msg, length);

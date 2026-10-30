@@ -314,6 +314,14 @@ void writeDevicesJson(Print& out) {
 			j.nul("diag");
 		}
 
+		j.obj("status_queries");
+		j.unum("sent", d->statusQueries);
+		j.unum("replies", d->statusReplies);
+		j.unum("no_answer", d->statusNoAnswer);
+		j.age("last_query_age_ms", d->lastQueryMs);
+		j.age("last_reply_age_ms", d->lastReplyMs);
+		j.end();
+
 		j.age("last_seen_age_ms", d->lastSeenMs);
 		j.age("last_alarm_age_ms", d->lastAlarmMs);
 		j.age("last_button_age_ms", d->lastButtonMs);
