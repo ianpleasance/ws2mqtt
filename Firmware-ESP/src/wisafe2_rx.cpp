@@ -48,7 +48,6 @@ void handleAlarmOffEvent(uint8_t* msg, int length) {
 
 	runtimeSetAlarm(pkt.device_id, false);
 	sendMQTTState(pkt.device_id, (char *)"alarm", false);
-	queryAnswered(pkt.sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
 }
 
 void handleButtonEvent(uint8_t* msg, int length) {
@@ -136,12 +135,28 @@ void handleUpdateRemoteStatusResponse(uint8_t* msg, int length) {
 
 	Serial.printf("Received diagnostic response for: %u\n", (unsigned int)pkt.device_id);
 
-	// Set initial state for sensor. There is no way to query for a
-	// currently ongoing alarm, so always assume alarm is off
+	// Was the alarm state known before this reply? A manual probe of a device
+	// that is in alarm must not switch the alarm off.
+	const device_runtime_t* before = runtimeBySid(pkt.sid);
+	bool alarmWasKnown = (before != NULL && before->alarmKnown);
+
 	runtimeSetDiag(pkt.sid, pkt.device_id, pkt.battery1, pkt.battery2, pkt.rssi,
 		pkt.firmware_version, pkt.flags, pkt.radio_fault_count);
-	runtimeSetAlarm(pkt.device_id, false);
-	sendMQTTState(pkt.device_id, (char *)"alarm", false);
+	if (length > 2) {
+		int rawLength = length - 2;
+		if (msg[length - 1] == SPI_STOP_WORD)
+			rawLength--;
+		runtimeSetStatusRaw(pkt.sid, msg + 2, rawLength);
+	}
+
+	// Set initial state for sensor. There is no way to query for a
+	// currently ongoing alarm, so assume alarm is off when it was not known
+	if (!alarmWasKnown) {
+		runtimeSetAlarm(pkt.device_id, false);
+		sendMQTTState(pkt.device_id, (char *)"alarm", false);
+	}
+
+	queryAnswered(pkt.sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
 }
 
 // Response to D3 06 xx 01 7E

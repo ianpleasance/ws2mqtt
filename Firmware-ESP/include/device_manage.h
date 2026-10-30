@@ -9,6 +9,13 @@
 // Returns false if there is no device with that SID.
 bool forgetDevice(uint8_t sid);
 
+// Ask a device for its status now (ahead of any other waiting query).
+// Returns false if there is no device with that SID.
+bool probeDevice(uint8_t sid);
+
+// Ask every known device for its status. Returns how many were queued.
+int probeAllDevices();
+
 // Forget every device. Returns how many were forgotten.
 int forgetAllDevices();
 

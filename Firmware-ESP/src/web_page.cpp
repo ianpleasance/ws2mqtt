@@ -74,8 +74,9 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 
   <section class="card">
     <h2>WiSafe2 devices</h2>
     <div class="bar">
+      <button id="probeAllBtn" type="button">Probe all devices</button>
       <button id="forgetAllBtn" type="button">Forget all devices</button>
-      <span>Removes devices from this gateway and Home Assistant. Devices still on the radio network are found again within a minute.</span>
+      <span>Probe asks devices for their status. Forget removes devices from this gateway and Home Assistant; devices still on the radio network are found again within a minute.</span>
     </div>
     <div class="scroll" id="devices"><div class="empty">Loading...</div></div>
   </section>
@@ -229,10 +230,18 @@ function renderDevices(data) {
       if (sq.no_answer > 0) txt += ", no answer " + sq.no_answer;
       if (sq.last_reply_age_ms !== null) txt += ", last reply " + fmtAge(sq.last_reply_age_ms);
       seen.appendChild(el("div", "sub", txt));
+      if (sq.raw) seen.appendChild(el("div", "sub mono", "raw " + sq.raw));
     }
     tr.appendChild(seen);
 
     var act = el("td");
+    var pb = el("button", null, "Probe");
+    pb.type = "button";
+    pb.addEventListener("click", function () {
+      post("/api/probe?sid=" + d.sid).then(refresh).catch(function () { alert("Could not probe the device"); });
+    });
+    act.appendChild(pb);
+    act.appendChild(document.createTextNode(" "));
     var fb = el("button", null, "Forget");
     fb.type = "button";
     fb.addEventListener("click", function () {
@@ -372,6 +381,10 @@ function refresh() {
       document.getElementById("updated").textContent = "Cannot reach the gateway (retrying)...";
     });
 }
+
+document.getElementById("probeAllBtn").addEventListener("click", function () {
+  post("/api/probe-all").then(refresh).catch(function () { alert("Could not probe the devices"); });
+});
 
 document.getElementById("forgetAllBtn").addEventListener("click", function () {
   if (!confirm("Forget ALL devices?\n\nThey are removed from this gateway and Home Assistant. Devices still on the radio network are found again within a minute.")) return;

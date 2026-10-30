@@ -156,3 +156,13 @@ void runtimeForget(uint8_t sid) {
 		return;
 	memset(&devices[sid], 0, sizeof(devices[sid]));
 }
+
+void runtimeSetStatusRaw(uint8_t sid, const uint8_t* data, int length) {
+	device_runtime_t* d = runtimeBySid(sid);
+	if (d == NULL || data == NULL || length < 0)
+		return;
+	if (length > (int)sizeof(d->statusRaw))
+		length = sizeof(d->statusRaw);
+	memcpy(d->statusRaw, data, length);
+	d->statusRawLen = length;
+}

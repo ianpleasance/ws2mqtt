@@ -41,3 +41,22 @@ int forgetAllDevices() {
 	sendQuerySIDMap();
 	return count;
 }
+
+bool probeDevice(uint8_t sid) {
+	if (runtimeBySid(sid) == NULL)
+		return false;
+	Serial.printf("Probing SID %d\n", sid);
+	queryRequestFirst(sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
+	return true;
+}
+
+int probeAllDevices() {
+	int count = 0;
+	for (int sid = 0; sid < RUNTIME_MAX_SID; sid++) {
+		if (runtimeBySid(sid) == NULL)
+			continue;
+		queryRequest(sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
+		count++;
+	}
+	return count;
+}

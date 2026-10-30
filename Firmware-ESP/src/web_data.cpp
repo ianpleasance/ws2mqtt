@@ -318,6 +318,13 @@ void writeDevicesJson(Print& out) {
 		j.unum("sent", d->statusQueries);
 		j.unum("replies", d->statusReplies);
 		j.unum("no_answer", d->statusNoAnswer);
+		if (d->statusRawLen > 0) {
+			char hex[40];
+			size_t n = 0;
+			for (int i = 0; i < d->statusRawLen && n + 4 < sizeof(hex); i++)
+				n += snprintf(hex + n, sizeof(hex) - n, i ? " %02X" : "%02X", d->statusRaw[i]);
+			j.str("raw", hex);
+		}
 		j.age("last_query_age_ms", d->lastQueryMs);
 		j.age("last_reply_age_ms", d->lastReplyMs);
 		j.end();

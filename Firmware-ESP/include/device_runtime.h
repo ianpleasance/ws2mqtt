@@ -39,6 +39,10 @@ typedef struct {
 	uint8_t flags;
 	uint8_t radio_fault_count;
 
+	// Raw bytes of the last status reply (after "D4 06"), to study what it holds
+	uint8_t statusRaw[12];
+	uint8_t statusRawLen;
+
 	// Status queries sent to this device (0x00 remote status)
 	uint32_t statusQueries;
 	uint32_t statusReplies;
@@ -69,6 +73,7 @@ void runtimeSetInfo(const device_t& device);
 void runtimeSetState(const device_state_t& ds);
 void runtimeSetAlarm(uint32_t device_id, bool alarm);
 void runtimeSetButton(uint32_t device_id);
+void runtimeSetStatusRaw(uint8_t sid, const uint8_t* data, int length);
 void runtimeQuerySent(uint8_t sid);
 void runtimeQueryReply(uint8_t sid);
 void runtimeQueryNoAnswer(uint8_t sid);

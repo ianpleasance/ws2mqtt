@@ -13,6 +13,9 @@
 // Queue a query. Duplicates of a query that is already waiting or in flight are ignored.
 void queryRequest(uint8_t sid, uint8_t subsubtype);
 
+// Queue a query to be sent next, ahead of anything already waiting (manual probe)
+void queryRequestFirst(uint8_t sid, uint8_t subsubtype);
+
 // Queue a status query for a device whose alarm state is not known yet
 void queryStatusIfUnknown(uint32_t device_id);
 

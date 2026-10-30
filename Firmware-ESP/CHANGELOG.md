@@ -105,3 +105,10 @@
   - New files: `include/device_manage.h` and `src/device_manage.cpp`.
 - **Alarm Control Units now use their real model name, `WTSL-F-1EU`**, in the web interface and in Home Assistant. This renames the device and entity names; entity IDs and unique IDs do not change.
 
+### V1.4.5
+- **Probe devices from the web interface.** A **Probe** button on each device row and a **Probe all devices** button ask devices for their status straight away (a single probe goes to the front of the queue). The reply updates the device's battery, signal and fault data and the "status replies" counters.
+- **A probe never clears a real alarm.** A status reply now sets the alarm to off only when the alarm state was not already known, so probing a device that is sounding leaves it in alarm.
+- **Raw status reply shown.** The "Last heard" cell shows the raw bytes of the last status reply (`raw 07 67 84 ...`), and `/data/devices.json` has them as `status_queries.raw`. This is to find out whether the reply says anything about the docked state, which is otherwise only reported when a device sends an event.
+- **Bug fix (since V1.4.1):** the status reply handler did not tell the query queue that the reply had arrived. The call had been placed in the alarm-off handler by mistake. Queries therefore only moved on after the 6 second timeout, and the "status replies" counters never counted. Fixed.
+- New endpoints `POST /api/probe?sid=<n>` and `POST /api/probe-all`, protected in the same way as the forget endpoints.
+

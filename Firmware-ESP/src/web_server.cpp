@@ -134,6 +134,31 @@ static void handleForgetAll() {
 	server.send(200, "application/json", body);
 }
 
+static void handleProbe() {
+	if (!writeAllowed())
+		return;
+	String arg = server.arg("sid");
+	int sid = arg.toInt();
+	if (arg.length() == 0 || sid < 0 || sid > 63) {
+		server.send(400, "application/json", "{\"ok\":false,\"error\":\"bad sid\"}");
+		return;
+	}
+	if (!probeDevice((uint8_t)sid)) {
+		server.send(404, "application/json", "{\"ok\":false,\"error\":\"no such device\"}");
+		return;
+	}
+	server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleProbeAll() {
+	if (!writeAllowed())
+		return;
+	int count = probeAllDevices();
+	char body[48];
+	snprintf(body, sizeof(body), "{\"ok\":true,\"queued\":%d}", count);
+	server.send(200, "application/json", body);
+}
+
 void setupWeb() {
 	static const char* headerKeys[] = {"X-Requested-With"};
 	server.collectHeaders(headerKeys, 1);
@@ -143,6 +168,8 @@ void setupWeb() {
 	server.on("/data/module.json", HTTP_GET, handleModule);
 	server.on("/data/devices.json", HTTP_GET, handleDevices);
 	server.on("/data/mqtt.json", HTTP_GET, handleMqtt);
+	server.on("/api/probe", HTTP_POST, handleProbe);
+	server.on("/api/probe-all", HTTP_POST, handleProbeAll);
 	server.on("/api/forget", HTTP_POST, handleForget);
 	server.on("/api/forget-all", HTTP_POST, handleForgetAll);
 	server.on("/favicon.svg", HTTP_GET, handleFavicon);

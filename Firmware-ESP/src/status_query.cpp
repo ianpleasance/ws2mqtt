@@ -38,6 +38,25 @@ void queryRequest(uint8_t sid, uint8_t sub) {
 	queuedCount++;
 }
 
+void queryRequestFirst(uint8_t sid, uint8_t sub) {
+	if (inFlight && current.sid == sid && current.sub == sub)
+		return;
+	// Remove any copy already waiting, then put it at the front
+	int kept = 0;
+	for (int i = 0; i < queuedCount; i++)
+		if (!(queued[i].sid == sid && queued[i].sub == sub))
+			queued[kept++] = queued[i];
+	queuedCount = kept;
+	if (queuedCount >= QUERY_QUEUE_SIZE) {
+		Serial.println("Query queue full, dropping query");
+		return;
+	}
+	memmove(&queued[1], &queued[0], queuedCount * sizeof(query_t));
+	queued[0].sid = sid;
+	queued[0].sub = sub;
+	queuedCount++;
+}
+
 void queryStatusIfUnknown(uint32_t device_id) {
 #ifdef QUERY_STATUS_FOR_KNOWN_DEVICES
 	device_runtime_t* d = runtimeByDeviceId(device_id);
