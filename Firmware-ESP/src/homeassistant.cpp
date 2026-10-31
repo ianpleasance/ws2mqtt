@@ -7,6 +7,7 @@
 #include "sysinfo.h"
 #include "version.h"
 #include "bridge_sensors.h"
+#include "device_runtime.h"
 
 extern PubSubClient mqttClient;
 
@@ -262,11 +263,15 @@ void sendMQTTBridgeSensor (char* sensor, char* sensor_value) {
 
 void announceMQTTDevice(device_t device) {
 	const device_type_info_t* type = deviceTypeInfo(device.device_type);
-	announceMQTTBinarySensor(device, (char *)type->haClass, (char *)type->entityName, (char *)"alarm", false);
-	announceMQTTBinarySensor(device, (char *)"battery", (char *)"Battery", (char *)"sensor_battery", true);
-	announceMQTTBinarySensor(device, (char *)"battery", (char *)"Radio module battery", (char *)"radio_module_battery", true);
-	announceMQTTBinarySensor(device, (char *)"plug", (char *)"Docked", (char *)"docked", true);
-	announceMQTTBinarySensor(device, (char *)"problem", (char *)"Generic error", (char *)"generic_error", true);
+	// Control units cannot be docked and do not report battery state, so those
+	// sensors are disabled by default for them
+	bool hasDockAndBattery = (device.device_type != DEVICE_TYPE_CONTROL_UNIT);
+	announceMQTTBinarySensor(device, (char *)type->haClass, (char *)type->entityName, (char *)"alarm", false, true);
+	announceMQTTBinarySensor(device, (char *)"battery", (char *)"Battery", (char *)"sensor_battery", true, hasDockAndBattery);
+	announceMQTTBinarySensor(device, (char *)"battery", (char *)"Radio module battery", (char *)"radio_module_battery", true, hasDockAndBattery);
+	announceMQTTBinarySensor(device, (char *)"plug", (char *)"Docked", (char *)"docked", true, hasDockAndBattery);
+	announceMQTTBinarySensor(device, (char *)"problem", (char *)"Generic error", (char *)"generic_error", true, true);
+	announceMQTTLocationSensor(device);
 
 	announceMQTTButtonEvent(device);
 }
@@ -288,6 +293,11 @@ void addDeviceDescription(JsonObject dev, device_t device) {
 	char devname[128];
 	snprintf(devname, sizeof(devname), "%s %s %u", manufacturer, model, (unsigned int)device.device_id);
 	dev["name"] = devname;
+
+	// Home Assistant files a new device in this area (only when it first creates it)
+	const device_runtime_t* rt = runtimeByDeviceId(device.device_id);
+	if (rt != NULL && rt->location[0] != '\0')
+		dev["sa"] = rt->location;
 }
 
 void announceMQTTBinarySensor(
@@ -295,9 +305,10 @@ void announceMQTTBinarySensor(
 	char* device_class,
 	char* name,
 	char* short_name,
-	bool diagnostic
+	bool diagnostic,
+	bool enabled
 ) {
-	StaticJsonDocument<768> doc;
+	StaticJsonDocument<1024> doc;
 
 	char avtytopic[200];
 	sprintf(avtytopic, "ws2mqtt/bridge_%08x/state", DEVICE_ID);
@@ -306,10 +317,10 @@ void announceMQTTBinarySensor(
 	JsonObject dev = doc.createNestedObject("dev");
 	addDeviceDescription(dev, device);
 
-	char sensor_name[128];
-	char* model = (char *)modelString(device.model);
-	snprintf(sensor_name, sizeof(sensor_name), "%s %u %s", model, (unsigned int)device.device_id, name);
-	doc["name"] = sensor_name;
+	// Home Assistant puts the device name in front of this, so keep it short
+	doc["name"] = name;
+	if (!enabled)
+		doc["en"] = false;
 
 	doc["dev_cla"] = device_class;
 	if (diagnostic)
@@ -323,7 +334,7 @@ void announceMQTTBinarySensor(
 	snprintf(uniq_id, sizeof(uniq_id), "%u_%s_ws2mqtt", (unsigned int)device.device_id, short_name);
 	doc["uniq_id"] = uniq_id;
 
-	char msg[800];
+	char msg[900];
 	if (!serializeDiscovery(doc, msg, sizeof(msg)))
 		return;
 
@@ -332,6 +343,51 @@ void announceMQTTBinarySensor(
 		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/binary_sensor/ws2mqtt_%u/%s/config", (unsigned int)device.device_id, short_name);
 		Serial.println(topic);
 		mqttPublish(topic, msg, true, MQTT_CAT_HOUSEKEEPING);
+	}
+}
+
+void announceMQTTLocationSensor(device_t device) {
+	StaticJsonDocument<1024> doc;
+
+	char avtytopic[200];
+	sprintf(avtytopic, "ws2mqtt/bridge_%08x/state", DEVICE_ID);
+	doc["avty_t"] = avtytopic;
+
+	JsonObject dev = doc.createNestedObject("dev");
+	addDeviceDescription(dev, device);
+
+	doc["name"] = "Location";
+	doc["entity_category"] = "diagnostic";
+	doc["icon"] = "mdi:map-marker";
+
+	char stat_t[128];
+	snprintf(stat_t, sizeof(stat_t), "ws2mqtt/%u/location", (unsigned int)device.device_id);
+	doc["stat_t"] = stat_t;
+
+	char uniq_id[128];
+	snprintf(uniq_id, sizeof(uniq_id), "%u_location_ws2mqtt", (unsigned int)device.device_id);
+	doc["uniq_id"] = uniq_id;
+
+	char msg[900];
+	if (!serializeDiscovery(doc, msg, sizeof(msg)))
+		return;
+
+	if (mqttClient.connected()) {
+		char topic[200];
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/sensor/ws2mqtt_%u/location/config", (unsigned int)device.device_id);
+		mqttPublish(topic, msg, true, MQTT_CAT_HOUSEKEEPING);
+	}
+
+	// Publish the current value too, so the sensor is not empty
+	const device_runtime_t* rt = runtimeByDeviceId(device.device_id);
+	sendMQTTLocation(device.device_id, rt != NULL ? rt->location : "");
+}
+
+void sendMQTTLocation(uint32_t device_id, const char* location) {
+	if (mqttClient.connected()) {
+		char topic[200];
+		snprintf(topic, sizeof(topic), "ws2mqtt/%u/location", (unsigned int)device_id);
+		mqttPublish(topic, location != NULL ? location : "", true, MQTT_CAT_HOUSEKEEPING);
 	}
 }
 
@@ -351,7 +407,7 @@ void sendMQTTDeviceState(device_state_t ds) {
 }
 
 void announceMQTTButtonEvent(device_t device) {
-	StaticJsonDocument<768> doc;
+	StaticJsonDocument<1024> doc;
 
 	// Create device
 	JsonObject dev = doc.createNestedObject("dev");
@@ -366,7 +422,7 @@ void announceMQTTButtonEvent(device_t device) {
 	doc["t"] = t;
 	doc["pl"] = "test_button";
 
-	char msg[800];
+	char msg[900];
 	if (!serializeDiscovery(doc, msg, sizeof(msg)))
 		return;
 
@@ -394,6 +450,14 @@ void removeMQTTDevice(device_t device) {
 	removeMQTTBinarySensor(device, (char *)"generic_error");
 
 	removeMQTTButtonEvent(device);
+
+	if (mqttClient.connected()) {
+		char topic[200];
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/sensor/ws2mqtt_%u/location/config", (unsigned int)device.device_id);
+		mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+		snprintf(topic, sizeof(topic), "ws2mqtt/%u/location", (unsigned int)device.device_id);
+		mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+	}
 
 	// Clear the retained state of each entity as well
 	static const char* const states[] = {"alarm", "sensor_battery", "radio_module_battery", "docked", "generic_error"};

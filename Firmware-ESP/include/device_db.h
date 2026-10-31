@@ -2,6 +2,7 @@
 #define DEVICE_DB_H 1
 
 #include <stdint.h>
+#include <stddef.h>
 #include "wisafe2_packets.h"
 
 typedef struct {
@@ -27,6 +28,11 @@ void migrateDeviceDB();
 
 void insertDeviceDB(device_t device);
 void updateDeviceDBState(device_state_t ds);
+
+// Free-text location of a device (for example "Kitchen"), kept by device ID so it
+// survives forgetting and rediscovering the device.
+bool getLocationDB(uint32_t device_id, char* out, size_t outSize);
+void setLocationDB(uint32_t device_id, const char* location);
 
 // Remove one device (by sid) from the database
 void deleteDeviceDB(uint8_t sid);

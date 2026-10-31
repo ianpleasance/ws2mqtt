@@ -134,6 +134,23 @@ static void handleForgetAll() {
 	server.send(200, "application/json", body);
 }
 
+static void handleLocation() {
+	if (!writeAllowed())
+		return;
+	String arg = server.arg("sid");
+	int sid = arg.toInt();
+	if (arg.length() == 0 || sid < 0 || sid > 63 || !server.hasArg("value")) {
+		server.send(400, "application/json", "{\"ok\":false,\"error\":\"bad request\"}");
+		return;
+	}
+	String value = server.arg("value");
+	if (!setDeviceLocation((uint8_t)sid, value.c_str())) {
+		server.send(404, "application/json", "{\"ok\":false,\"error\":\"no such device\"}");
+		return;
+	}
+	server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handleProbe() {
 	if (!writeAllowed())
 		return;
@@ -168,6 +185,7 @@ void setupWeb() {
 	server.on("/data/module.json", HTTP_GET, handleModule);
 	server.on("/data/devices.json", HTTP_GET, handleDevices);
 	server.on("/data/mqtt.json", HTTP_GET, handleMqtt);
+	server.on("/api/location", HTTP_POST, handleLocation);
 	server.on("/api/probe", HTTP_POST, handleProbe);
 	server.on("/api/probe-all", HTTP_POST, handleProbeAll);
 	server.on("/api/forget", HTTP_POST, handleForget);

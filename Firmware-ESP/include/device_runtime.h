@@ -18,6 +18,9 @@ typedef struct {
 	uint16_t model;
 	uint8_t device_type;
 
+	// Free-text location, such as "Kitchen" (empty = not set)
+	char location[33];
+
 	// Alarm state. alarmKnown is false until we have seen an alarm / alarm off
 	// event or the initial status response, since the module cannot be asked.
 	bool alarmKnown;

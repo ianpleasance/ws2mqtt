@@ -42,6 +42,7 @@ void runtimeSetInfo(const device_t& device) {
 	d->model = device.model;
 	d->device_type = device.device_type;
 	d->lastSeenMs = millis();
+	getLocationDB(device.device_id, d->location, sizeof(d->location));
 }
 
 void runtimeSetState(const device_state_t& ds) {
@@ -107,6 +108,7 @@ static void loadDevice(device_t device) {
 	d->device_id = device.device_id;
 	d->model = device.model;
 	d->device_type = device.device_type;
+	getLocationDB(device.device_id, d->location, sizeof(d->location));
 }
 
 static void loadDeviceState(device_state_t ds) {

@@ -39,9 +39,14 @@ void announceMQTTBinarySensor(
 	char* device_class,
 	char* name,
 	char* short_name,
-	bool diagnostic
+	bool diagnostic,
+	bool enabled = true
 );
 void sendMQTTState(uint32_t deviceid, char* short_name, bool state);
+
+// Location sensor (free text such as "Kitchen") for each device
+void announceMQTTLocationSensor(device_t device);
+void sendMQTTLocation(uint32_t deviceid, const char* location);
 void sendMQTTDeviceState(device_state_t ds);
 void announceMQTTButtonEvent(device_t device);
 void sendMQTTButtonEvent(uint32_t deviceid);

@@ -284,6 +284,7 @@ void writeDevicesJson(Print& out) {
 		j.str("model", modelString(d->model));
 		j.hex("type_id", d->device_type, 2);
 		j.str("type", deviceTypeInfo(d->device_type)->name);
+		j.str("location", d->location);
 
 		if (d->alarmKnown)
 			j.boolean("alarm", d->alarm);

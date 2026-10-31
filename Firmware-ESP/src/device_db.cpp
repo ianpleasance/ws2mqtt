@@ -233,6 +233,9 @@ void connectDeviceDB() {
 void migrateDeviceDB() {
 	const char* schema = "CREATE TABLE IF NOT EXISTS devices (sid INTEGER NOT NULL PRIMARY KEY, device_id INTEGER, model INTEGER, device_type INTEGER, generic_error BOOLEAN, docked BOOLEAN, sensor_battery_error BOOLEAN, radio_module_battery_error BOOLEAN);";
 	db_exec(deviceDB, schema);
+
+	const char* locations = "CREATE TABLE IF NOT EXISTS locations (device_id INTEGER NOT NULL PRIMARY KEY, location TEXT NOT NULL);";
+	db_exec(deviceDB, locations);
 }
 
 void updateDeviceDBState(device_state_t ds) {
@@ -260,4 +263,47 @@ void deleteDeviceDB(uint8_t sid) {
 	char sql[80];
 	snprintf(sql, sizeof(sql), "DELETE FROM devices WHERE sid = %d;", sid);
 	db_exec(deviceDB, sql);
+}
+
+bool getLocationDB(uint32_t device_id, char* out, size_t outSize) {
+	if (out == NULL || outSize == 0)
+		return false;
+	out[0] = '\0';
+	if (deviceDB == NULL)
+		return false;
+
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(deviceDB, "SELECT location FROM locations WHERE device_id = ?1;", -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	bool found = false;
+	sqlite3_bind_int64(stmt, 1, (sqlite3_int64)device_id);
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		const unsigned char* text = sqlite3_column_text(stmt, 0);
+		if (text != NULL) {
+			snprintf(out, outSize, "%s", (const char*)text);
+			found = true;
+		}
+	}
+	sqlite3_finalize(stmt);
+	return found;
+}
+
+void setLocationDB(uint32_t device_id, const char* location) {
+	if (deviceDB == NULL)
+		return;
+
+	sqlite3_stmt* stmt = NULL;
+	if (location == NULL || location[0] == '\0') {
+		if (sqlite3_prepare_v2(deviceDB, "DELETE FROM locations WHERE device_id = ?1;", -1, &stmt, NULL) != SQLITE_OK)
+			return;
+		sqlite3_bind_int64(stmt, 1, (sqlite3_int64)device_id);
+	} else {
+		if (sqlite3_prepare_v2(deviceDB, "INSERT OR REPLACE INTO locations (device_id, location) VALUES (?1, ?2);", -1, &stmt, NULL) != SQLITE_OK)
+			return;
+		sqlite3_bind_int64(stmt, 1, (sqlite3_int64)device_id);
+		sqlite3_bind_text(stmt, 2, location, -1, SQLITE_TRANSIENT);
+	}
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
 }

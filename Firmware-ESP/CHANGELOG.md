@@ -112,3 +112,21 @@
 - **Bug fix (since V1.4.1):** the status reply handler did not tell the query queue that the reply had arrived. The call had been placed in the alarm-off handler by mistake. Queries therefore only moved on after the 6 second timeout, and the "status replies" counters never counted. Fixed.
 - New endpoints `POST /api/probe?sid=<n>` and `POST /api/probe-all`, protected in the same way as the forget endpoints.
 
+### V1.4.6
+- **Device location.**
+  - A new editable **Location** column in the web interface (for example "Kitchen"). It saves when you leave the field or press Enter, and the table does not refresh while you are typing. The location can be up to 32 characters. Clear the field to remove it.
+  - The location is sent to Home Assistant as a new diagnostic **Location** sensor on each device, and as the device's suggested area. Home Assistant only uses the suggested area when it first creates the device, so the Location sensor is the reliable way to use it later.
+  - Locations are stored by device ID in a new `locations` table in the gateway database. They survive **Forget** and rediscovery, and are cleared only when the radio module is unpaired and the database is reset.
+  - New endpoint `POST /api/location?sid=<n>&value=<text>`, protected by the same `X-Requested-With` header as the other write endpoints. `/data/devices.json` now has a `location` field.
+- **Alarm Control Units.**
+  - The Docked, Sensor battery and Radio module battery entities are still created but are **disabled by default** in Home Assistant, because the control units do not report them. Enable them in Home Assistant if you want them.
+  - The web interface shows **N/A** for Docked and Faults on control units. An error is still shown if one is reported.
+- **Shorter entity names.** Entities were named with the model and device ID twice (for example `binary_sensor.fireangel_unknown_5096591_unknown_5096591_battery`) because Home Assistant adds the device name in front of the entity name. Entity names are now just "Smoke detector", "Docked", "Sensor battery" and so on.
+- **Upgrade notes**
+  - Existing entities keep their old IDs and names in Home Assistant. To get the new names, use **Forget all devices** in the web interface, delete the old devices and entities in Home Assistant, and let the gateway rediscover them. Re-enter the locations if the database was reset.
+  - Entity IDs will change, so update any automation or dashboard that uses them.
+
+### V1.4.7
+- **Click feedback on the Probe buttons.** **Probe** and **Probe all devices** turn green and say "Sent" for about 1.5 seconds after they are clicked, then go back to normal. It stays green when the table refreshes in between, and if the request fails the button goes back to normal straight away and the existing error message is shown.
+- **Forgetting a single device now clears its location.** **Forget all devices** still keeps the locations, so devices that come straight back have theirs. The confirmation messages say which applies. (In V1.4.6 both kept the location.)
+

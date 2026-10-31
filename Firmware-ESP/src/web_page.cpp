@@ -55,8 +55,12 @@ td.wrap { word-break: break-all; }
 .sub { color: var(--muted); font-size: 12px; }
 .bar { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 8px; color: var(--muted); font-size: 13px; }
 .bar label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+input.loc { font: inherit; width: 9em; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); }
 button { font: inherit; padding: 3px 12px; border-radius: 6px; border: 1px solid var(--line);
-  background: var(--card); color: var(--text); cursor: pointer; }
+  background: var(--card); color: var(--text); cursor: pointer;
+  transition: background-color .15s, color .15s, border-color .15s; }
+button.sent { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
 .empty { color: var(--muted); padding: 6px 0; }
 .dir-in { color: var(--accent); font-weight: 600; }
 footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 24px; }
@@ -102,6 +106,7 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 
 <script>
 "use strict";
 var paused = false;
+var editing = false;
 
 function el(tag, cls, text) {
   var e = document.createElement(tag);
@@ -163,6 +168,36 @@ function post(url) {
   });
 }
 
+// A button turns green and says "Sent" for a moment after it is clicked. The
+// table is rebuilt often, so the state is kept here and put back on new buttons.
+var FLASH_MS = 1500;
+var flashes = {};
+var flashBtns = {};
+function paintFlash(key) {
+  var b = flashBtns[key];
+  if (!b) return;
+  var on = (flashes[key] || 0) > Date.now();
+  b.className = on ? "sent" : "";
+  b.textContent = on ? "Sent \u2713" : b.idleText;
+}
+function actionButton(key, label) {
+  var b = el("button", null, label);
+  b.type = "button";
+  b.idleText = label;
+  flashBtns[key] = b;
+  paintFlash(key);
+  return b;
+}
+function flash(key) {
+  flashes[key] = Date.now() + FLASH_MS;
+  paintFlash(key);
+  setTimeout(function () { paintFlash(key); }, FLASH_MS + 50);
+}
+function unflash(key) {
+  delete flashes[key];
+  paintFlash(key);
+}
+
 function renderDevices(data) {
   var box = document.getElementById("devices");
   box.replaceChildren();
@@ -171,7 +206,7 @@ function renderDevices(data) {
     return 0;
   }
   var table = el("table"), head = el("tr");
-  ["SID", "Device ID", "Model", "Type", "Alarm", "Docked", "Faults", "Signal", "Last heard", ""].forEach(function (h) {
+  ["SID", "Device ID", "Location", "Model", "Type", "Alarm", "Docked", "Faults", "Signal", "Last heard", ""].forEach(function (h) {
     head.appendChild(el("th", null, h));
   });
   table.appendChild(head);
@@ -181,6 +216,22 @@ function renderDevices(data) {
     var tr = el("tr");
     tr.appendChild(el("td", "mono", d.sid));
     tr.appendChild(el("td", "mono", d.device_id));
+
+    var loc = el("td");
+    var inp = el("input", "loc");
+    inp.type = "text";
+    inp.maxLength = 32;
+    inp.placeholder = "e.g. Kitchen";
+    inp.value = d.location || "";
+    inp.addEventListener("focus", function () { editing = true; });
+    inp.addEventListener("blur", function () { editing = false; });
+    inp.addEventListener("keydown", function (e) { if (e.key === "Enter") inp.blur(); });
+    inp.addEventListener("change", function () {
+      post("/api/location?sid=" + d.sid + "&value=" + encodeURIComponent(inp.value))
+        .then(refresh).catch(function () { alert("Could not save the location"); });
+    });
+    loc.appendChild(inp);
+    tr.appendChild(loc);
 
     var model = el("td");
     model.appendChild(document.createTextNode(d.model));
@@ -198,12 +249,17 @@ function renderDevices(data) {
     else alarm.appendChild(pill("Unknown"));
     tr.appendChild(alarm);
 
+    var isControlUnit = (d.type_id === "0xC4");
     var docked = el("td");
-    docked.appendChild(d.state ? pill(d.state.docked ? "Docked" : "Not docked", d.state.docked ? "ok" : "warn") : pill("Unknown"));
+    if (isControlUnit) docked.appendChild(pill("N/A"));
+    else docked.appendChild(d.state ? pill(d.state.docked ? "Docked" : "Not docked", d.state.docked ? "ok" : "warn") : pill("Unknown"));
     tr.appendChild(docked);
 
     var faults = el("td");
-    if (!d.state) faults.appendChild(pill("Unknown"));
+    if (isControlUnit) {
+      // No battery or dock state; only an error is worth showing
+      faults.appendChild(d.state && d.state.generic_error ? pill("Error", "bad") : pill("N/A"));
+    } else if (!d.state) faults.appendChild(pill("Unknown"));
     else {
       var any = false;
       if (d.state.generic_error) { faults.appendChild(pill("Error", "bad")); any = true; }
@@ -235,17 +291,18 @@ function renderDevices(data) {
     tr.appendChild(seen);
 
     var act = el("td");
-    var pb = el("button", null, "Probe");
-    pb.type = "button";
+    var pkey = "probe" + d.sid;
+    var pb = actionButton(pkey, "Probe");
     pb.addEventListener("click", function () {
-      post("/api/probe?sid=" + d.sid).then(refresh).catch(function () { alert("Could not probe the device"); });
+      flash(pkey);
+      post("/api/probe?sid=" + d.sid).then(refresh).catch(function () { unflash(pkey); alert("Could not probe the device"); });
     });
     act.appendChild(pb);
     act.appendChild(document.createTextNode(" "));
     var fb = el("button", null, "Forget");
     fb.type = "button";
     fb.addEventListener("click", function () {
-      if (!confirm("Forget device " + d.device_id + " (SID " + d.sid + ")?\n\nIt is removed from this gateway and Home Assistant. If it is still on the radio network it will be found again within a minute.")) return;
+      if (!confirm("Forget device " + d.device_id + " (SID " + d.sid + ")?\n\nIt is removed from this gateway and Home Assistant, and its location is cleared. If it is still on the radio network it will be found again within a minute.")) return;
       post("/api/forget?sid=" + d.sid).then(refresh).catch(function () { alert("Could not forget the device"); });
     });
     act.appendChild(fb);
@@ -367,7 +424,10 @@ function refresh() {
     .then(function (r) { mod = r; return get("/data/devices.json"); })
     .then(function (r) { dev = r; return get("/data/mqtt.json?all=" + all); })
     .then(function (mq) {
-      var alarms = renderDevices(dev);
+      // Leave the table alone while a location is being typed
+      var alarms = editing
+        ? dev.devices.filter(function (x) { return x.alarm === true; }).length
+        : renderDevices(dev);
       renderModule(mod);
       renderSystem(sys);
       renderPills(sys, mod, alarms);
@@ -382,12 +442,15 @@ function refresh() {
     });
 }
 
-document.getElementById("probeAllBtn").addEventListener("click", function () {
-  post("/api/probe-all").then(refresh).catch(function () { alert("Could not probe the devices"); });
+flashBtns.probeAll = document.getElementById("probeAllBtn");
+flashBtns.probeAll.idleText = flashBtns.probeAll.textContent;
+flashBtns.probeAll.addEventListener("click", function () {
+  flash("probeAll");
+  post("/api/probe-all").then(refresh).catch(function () { unflash("probeAll"); alert("Could not probe the devices"); });
 });
 
 document.getElementById("forgetAllBtn").addEventListener("click", function () {
-  if (!confirm("Forget ALL devices?\n\nThey are removed from this gateway and Home Assistant. Devices still on the radio network are found again within a minute.")) return;
+  if (!confirm("Forget ALL devices?\n\nThey are removed from this gateway and Home Assistant. Devices still on the radio network are found again within a minute, with the locations you set.")) return;
   post("/api/forget-all").then(refresh).catch(function () { alert("Could not forget the devices"); });
 });
 
