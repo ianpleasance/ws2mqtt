@@ -16,6 +16,17 @@ void queryRequest(uint8_t sid, uint8_t subsubtype);
 // Queue a query to be sent next, ahead of anything already waiting (manual probe)
 void queryRequestFirst(uint8_t sid, uint8_t subsubtype);
 
+// How often a SID that is on the radio network but not identified yet has been
+// asked who it is (identity query 0x01), and how often that went unanswered
+typedef struct {
+	uint32_t sent;
+	uint32_t noAnswer;
+	uint32_t lastMs;   // millis() when the last one was sent
+} id_query_stats_t;
+
+// Returns false if no identity query has been sent to this SID
+bool queryIdStats(uint8_t sid, id_query_stats_t* out);
+
 // Queue a status query for a device whose alarm state is not known yet
 void queryStatusIfUnknown(uint32_t device_id);
 

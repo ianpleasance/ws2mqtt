@@ -157,6 +157,9 @@ void handleUpdateRemoteStatusResponse(uint8_t* msg, int length) {
 	}
 
 	queryAnswered(pkt.sid, SPI_TX_DIAGNOSTIC_DETAILS_STATUS);
+
+	// Signal, battery readings and counters for the device's diagnostic sensors
+	sendMQTTDeviceSensors(pkt.device_id);
 }
 
 // Response to D3 06 xx 01 7E
@@ -230,9 +233,20 @@ void handleDiagnosticResponse(uint8_t* msg, int length) {
 	ownSid = pkt.sid;
 }
 
+// A packet that no handler understood: count it, remember its start, and log it
+static void logUnrecognised(const uint8_t* msg, int length, bool withSub) {
+	noteUnrecognisedPacket(msg, length, withSub);
+	Serial.printf("Unrecognised packet, %d bytes:", length);
+	for (int i = 0; i < length && i < 16; i++)
+		Serial.printf(" %02X", msg[i]);
+	Serial.println();
+}
+
 void handleDiagnosticDetailsResponse(uint8_t* msg, int length) {
-	if (length < 2)
+	if (length < 2) {
+		logUnrecognised(msg, length, false);   // truncated: still worth showing
 		return;
+	}
 
 	switch(msg[1]) {
 	case SPI_DIAGNOSTIC_DETAILS_UPDATE_SIDMAP:
@@ -243,6 +257,9 @@ void handleDiagnosticDetailsResponse(uint8_t* msg, int length) {
 		break;
 	case SPI_DIAGNOSTIC_DETAILS_NEW_DEVICE:
 		handleNewDeviceResponse(msg, length);
+		break;
+	default:
+		logUnrecognised(msg, length, true);
 		break;
 	}
 }
@@ -281,6 +298,9 @@ void handleRX(uint8_t* msg, int length) {
 		break;
 	case SPI_RX_DIAGNOSTIC_DETAILS_REMOTE_ID:
 		handleDiagnosticDetailsRemoteIdResponse(msg, length);
+		break;
+	default:
+		logUnrecognised(msg, length, false);
 		break;
 	}
 }

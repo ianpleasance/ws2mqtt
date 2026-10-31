@@ -14,6 +14,7 @@
 #include "wisafe2_tx.h"
 #include "homeassistant.h"
 #include "device_models.h"
+#include "status_query.h"
 
 extern PubSubClient mqttClient;
 extern int ownSid;
@@ -248,6 +249,31 @@ void writeModuleJson(Print& out) {
 	j.age("age_ms", moduleInfo.lastRxMs);
 	j.end();
 
+	// Packets the firmware did not understand, by type
+	j.obj("unrecognised");
+	j.unum("total", moduleInfo.rxUnrecognised);
+	j.arr("types");
+	for (int i = 0; i < moduleInfo.unrecognisedUsed && i < UNRECOGNISED_TYPES_MAX; i++) {
+		const unrecognised_t* u = &moduleInfo.unrecognised[i];
+		j.obj();
+		j.hex("type", u->type, 2);
+		if (u->hasSub)
+			j.hex("sub", u->sub, 2);
+		else
+			j.nul("sub");
+		j.unum("count", u->count);
+		j.age("age_ms", u->lastMs);
+		char hex[UNRECOGNISED_BYTES_MAX * 3 + 1];
+		size_t n = 0;
+		hex[0] = 0;
+		for (int b = 0; b < u->length && n + 4 < sizeof(hex); b++)
+			n += snprintf(hex + n, sizeof(hex) - n, b ? " %02X" : "%02X", u->bytes[b]);
+		j.str("bytes", hex);
+		j.end();
+	}
+	j.end();
+	j.end();
+
 	j.obj("tx");
 	j.unum("sent", moduleInfo.txSent);
 	j.unum("dropped", moduleInfo.txDropped);
@@ -335,8 +361,26 @@ void writeDevicesJson(Print& out) {
 		j.age("last_button_age_ms", d->lastButtonMs);
 		j.end();
 	}
-
 	j.end();
+
+	// SIDs that are on the radio network but have not identified themselves
+	j.arr("unidentified");
+	if (moduleInfo.sidmapReceived) {
+		for (int sid = 0; sid < RUNTIME_MAX_SID; sid++) {
+			if (!((moduleInfo.sidmap >> sid) & 0x01) || sid == ownSid || runtimeBySid(sid) != NULL)
+				continue;
+			id_query_stats_t q;
+			bool asked = queryIdStats(sid, &q);
+			j.obj();
+			j.num("sid", sid);
+			j.unum("id_queries", asked ? q.sent : 0);
+			j.unum("id_no_answer", asked ? q.noAnswer : 0);
+			j.age("last_query_age_ms", asked ? q.lastMs : 0);
+			j.end();
+		}
+	}
+	j.end();
+
 	j.end();
 }
 

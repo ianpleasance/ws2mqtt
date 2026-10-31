@@ -142,6 +142,17 @@ static bool vRxFrames(char* o, size_t n)    { return putUInt(o, n, moduleInfo.rx
 static bool vRxTimeouts(char* o, size_t n)  { return putUInt(o, n, moduleInfo.rxFrameTimeouts); }
 static bool vRxBadLen(char* o, size_t n)    { return putUInt(o, n, moduleInfo.rxBadLength); }
 static bool vRxShort(char* o, size_t n)     { return putUInt(o, n, moduleInfo.rxShortPackets); }
+static bool vRxUnrecognised(char* o, size_t n) { return putUInt(o, n, moduleInfo.rxUnrecognised); }
+static bool vRxUnrecognisedLast(char* o, size_t n) {
+	if (moduleInfo.unrecognisedUsed == 0)
+		return putStr(o, n, "None");
+	const unrecognised_t* u = &moduleInfo.unrecognised[moduleInfo.unrecognisedLast];
+	size_t len = 0;
+	o[0] = 0;
+	for (int i = 0; i < u->length && len + 4 < n; i++)
+		len += snprintf(o + len, n - len, i ? " %02X" : "%02X", u->bytes[i]);
+	return true;
+}
 static bool vTxSent(char* o, size_t n)      { return putUInt(o, n, moduleInfo.txSent); }
 static bool vTxDropped(char* o, size_t n)   { return putUInt(o, n, moduleInfo.txDropped); }
 static bool vTxQueue(char* o, size_t n)     { return putInt(o, n, txQueueDepth()); }
@@ -200,6 +211,8 @@ static const entry_t entries[] = {
 	{{"wisafe_rx_timeouts",   "WiSafe RX Timeouts",     "None", "None", "mdi:counter",       true},  vRxTimeouts},
 	{{"wisafe_rx_bad_length", "WiSafe RX Bad Length",   "None", "None", "mdi:counter",       true},  vRxBadLen},
 	{{"wisafe_rx_short",      "WiSafe RX Short Packets","None", "None", "mdi:counter",       true},  vRxShort},
+	{{"wisafe_rx_unrecognised","WiSafe Unrecognised Packets","None","None","mdi:help-circle",  true},  vRxUnrecognised},
+	{{"wisafe_rx_unrecognised_last","WiSafe Last Unrecognised Packet","None","None","mdi:help-circle", true}, vRxUnrecognisedLast},
 	{{"wisafe_tx_sent",       "WiSafe Messages Sent",   "None", "None", "mdi:counter",       true},  vTxSent},
 	{{"wisafe_tx_dropped",    "WiSafe Messages Dropped","None", "None", "mdi:counter",       true},  vTxDropped},
 	{{"wisafe_tx_queue",      "WiSafe TX Queue",        "None", "None", "mdi:tray-full",     true},  vTxQueue},

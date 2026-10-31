@@ -130,3 +130,15 @@
 - **Click feedback on the Probe buttons.** **Probe** and **Probe all devices** turn green and say "Sent" for about 1.5 seconds after they are clicked, then go back to normal. It stays green when the table refreshes in between, and if the request fails the button goes back to normal straight away and the existing error message is shown.
 - **Forgetting a single device now clears its location.** **Forget all devices** still keeps the locations, so devices that come straight back have theirs. The confirmation messages say which applies. (In V1.4.6 both kept the location.)
 
+### V1.5.0
+- **Show unidentified SIDs (web interface).** A new **Show unidentified SIDs** checkbox, in the same style as the options in the MQTT messages list, lists SIDs that are on the radio network but have never been identified (for example SID 8). For each one it shows how many identity requests were sent, how many got no answer and when it was last asked. The count is always shown beside the checkbox. `/data/devices.json` has a new `unidentified` list.
+- **Unrecognised packet counter.** Packets the gateway does not know how to handle are now counted instead of silently ignored, by type (and sub type for `0xD4` packets, up to 8 types) with the first bytes of the latest one. They appear in the Radio module card, in `/data/module.json` (`unrecognised`), in the serial log, and as two new bridge sensors in Home Assistant (`wisafe_rx_unrecognised`, `wisafe_rx_unrecognised_last`). A truncated `0xD4` packet is counted too.
+- **"None reported" instead of "Unknown".** The Alarm, Docked and Faults pills say "None reported" when a device has not reported a value.
+- **Everything on the web page is now in Home Assistant.**
+  - Each device gets a **Probe** button and diagnostic sensors: Signal (RSSI) and radio faults (enabled), and SID, battery 1, battery 2, firmware, flags, status sent / replies / no answer and the raw status reply (disabled by default, enable the ones you want). They update when a status reply arrives or a query is sent or times out.
+  - The bridge gets **Probe All Devices** (enabled) and **Rescan Radio Network** (disabled by default) buttons.
+  - Forget is deliberately not available in Home Assistant, because it is destructive.
+  - Forgetting a device removes the new entities as well.
+- **MQTT command hardening.** `probe_<id>` only accepts plain digits.
+- **Upgrade notes.** The new Home Assistant entities are created automatically when devices are next announced (restart the gateway, or Forget all devices). Not tested on real hardware yet.
+

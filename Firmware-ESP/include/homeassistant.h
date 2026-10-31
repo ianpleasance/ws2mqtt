@@ -49,6 +49,12 @@ void announceMQTTLocationSensor(device_t device);
 void sendMQTTLocation(uint32_t deviceid, const char* location);
 void sendMQTTDeviceState(device_state_t ds);
 void announceMQTTButtonEvent(device_t device);
+
+// Diagnostic sensors and a Probe button on each device
+void announceMQTTDeviceSensors(device_t device);
+void announceMQTTDeviceProbeButton(device_t device);
+void sendMQTTDeviceSensors(uint32_t deviceid);
+void sendMQTTDeviceSensor(uint32_t deviceid, const char* key);
 void sendMQTTButtonEvent(uint32_t deviceid);
 
 void removeMQTTDevice(device_t device);

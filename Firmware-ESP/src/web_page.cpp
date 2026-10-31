@@ -36,6 +36,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 16p
   padding: 12px 14px; border-radius: 8px; font-weight: 600; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
 .card h2 { font-size: 15px; margin: 0 0 10px; }
+.card h3 { font-size: 14px; margin: 16px 0 6px; }
 .grid2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 .scroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
@@ -80,9 +81,11 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 
     <div class="bar">
       <button id="probeAllBtn" type="button">Probe all devices</button>
       <button id="forgetAllBtn" type="button">Forget all devices</button>
+      <label><input type="checkbox" id="showUnid"> Show unidentified SIDs <span id="unidCount"></span></label>
       <span>Probe asks devices for their status. Forget removes devices from this gateway and Home Assistant; devices still on the radio network are found again within a minute.</span>
     </div>
     <div class="scroll" id="devices"><div class="empty">Loading...</div></div>
+    <div id="unid" hidden></div>
   </section>
 
   <div class="grid2">
@@ -246,20 +249,20 @@ function renderDevices(data) {
     var alarm = el("td");
     if (d.alarm === true) { alarms++; alarm.appendChild(pill("ALARM", "bad")); }
     else if (d.alarm === false) alarm.appendChild(pill("OK", "ok"));
-    else alarm.appendChild(pill("Unknown"));
+    else alarm.appendChild(pill("None reported"));
     tr.appendChild(alarm);
 
     var isControlUnit = (d.type_id === "0xC4");
     var docked = el("td");
     if (isControlUnit) docked.appendChild(pill("N/A"));
-    else docked.appendChild(d.state ? pill(d.state.docked ? "Docked" : "Not docked", d.state.docked ? "ok" : "warn") : pill("Unknown"));
+    else docked.appendChild(d.state ? pill(d.state.docked ? "Docked" : "Not docked", d.state.docked ? "ok" : "warn") : pill("None reported"));
     tr.appendChild(docked);
 
     var faults = el("td");
     if (isControlUnit) {
       // No battery or dock state; only an error is worth showing
       faults.appendChild(d.state && d.state.generic_error ? pill("Error", "bad") : pill("N/A"));
-    } else if (!d.state) faults.appendChild(pill("Unknown"));
+    } else if (!d.state) faults.appendChild(pill("None reported"));
     else {
       var any = false;
       if (d.state.generic_error) { faults.appendChild(pill("Error", "bad")); any = true; }
@@ -314,6 +317,35 @@ function renderDevices(data) {
   return alarms;
 }
 
+// SIDs that are on the radio network but have not told us what they are. Shown
+// only when the "Show unidentified SIDs" box is ticked.
+function renderUnidentified(list) {
+  var box = document.getElementById("unid");
+  var shown = document.getElementById("showUnid").checked;
+  document.getElementById("unidCount").textContent = "(" + list.length + ")";
+  box.hidden = !shown;
+  box.replaceChildren();
+  if (!shown) return;
+  box.appendChild(el("h3", null, "Unidentified SIDs"));
+  if (!list.length) {
+    box.appendChild(el("div", "empty", "None. Every SID on the radio network is a known device."));
+    return;
+  }
+  box.appendChild(el("div", "empty", "These are on the radio network but have not answered the identity request yet. The gateway asks again about once a minute."));
+  var table = el("table"), head = el("tr");
+  ["SID", "Identity requests", "No answer", "Last asked"].forEach(function (h) { head.appendChild(el("th", null, h)); });
+  table.appendChild(head);
+  list.forEach(function (u) {
+    var tr = el("tr");
+    tr.appendChild(el("td", "mono", u.sid));
+    tr.appendChild(el("td", null, u.id_queries));
+    tr.appendChild(el("td", null, u.id_no_answer));
+    tr.appendChild(el("td", null, u.id_queries ? fmtAge(u.last_query_age_ms) : "not yet"));
+    table.appendChild(tr);
+  });
+  box.appendChild(table);
+}
+
 function renderModule(m) {
   var rows = [];
   rows.push(["Paired", m.paired === null ? pill("Waiting for module") : yesNo(m.paired, true)]);
@@ -335,6 +367,13 @@ function renderModule(m) {
   rows.push(["Welcome handshakes", m.welcome.count + " (" + fmtAge(m.welcome.age_ms) + ")"]);
   rows.push(["Frames received", m.rx.frames + " (" + fmtAge(m.rx.age_ms) + ")"]);
   rows.push(["RX problems", m.rx.frame_timeouts + " timeouts, " + m.rx.bad_length + " bad length, " + m.rx.short_packets + " short"]);
+  if (m.unrecognised) {
+    rows.push(["Unrecognised packets", String(m.unrecognised.total)]);
+    m.unrecognised.types.forEach(function (u) {
+      var label = "Type " + u.type + (u.sub ? " / " + u.sub : "");
+      rows.push([label, u.count + " times, last " + fmtAge(u.age_ms) + ": " + u.bytes]);
+    });
+  }
   rows.push(["Messages sent", m.tx.sent + " (" + fmtAge(m.tx.age_ms) + ")"]);
   rows.push(["TX queue", m.tx.queued + " waiting, " + m.tx.dropped + " dropped"]);
   fillKv("module", rows);
@@ -428,6 +467,7 @@ function refresh() {
       var alarms = editing
         ? dev.devices.filter(function (x) { return x.alarm === true; }).length
         : renderDevices(dev);
+      renderUnidentified(dev.unidentified || []);
       renderModule(mod);
       renderSystem(sys);
       renderPills(sys, mod, alarms);
@@ -460,6 +500,7 @@ document.getElementById("pauseBtn").addEventListener("click", function () {
   if (!paused) refresh();
 });
 document.getElementById("showHk").addEventListener("change", function () { refresh(); });
+document.getElementById("showUnid").addEventListener("change", function () { refresh(); });
 
 function tick() { refresh().then(function () { setTimeout(tick, 3000); }); }
 tick();

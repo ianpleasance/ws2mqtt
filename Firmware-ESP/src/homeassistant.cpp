@@ -8,6 +8,8 @@
 #include "version.h"
 #include "bridge_sensors.h"
 #include "device_runtime.h"
+#include "device_sensors.h"
+#include "device_manage.h"
 
 extern PubSubClient mqttClient;
 
@@ -99,6 +101,10 @@ void announceMQTTBridgeEntities() {
 	announceMQTTBridgeButtonEntity((char*)"Emergency Smoke", (char*)"emergency_smoke", false, false, (char*)"mdi:bell-sleep"); //Emergency Smoke Button
 	announceMQTTBridgeButtonEntity((char*)"Emergency CO", (char*)"emergency_co", false, false, (char*)"mdi:bell-sleep"); //Emergency CO Button
 #endif
+
+	// Probe every device now, and rescan the radio network for devices
+	announceMQTTBridgeButtonEntity((char*)"Probe All Devices", (char*)"probe_all", true, true, (char*)"mdi:radar");
+	announceMQTTBridgeButtonEntity((char*)"Rescan Radio Network", (char*)"rescan", true, false, (char*)"mdi:radar");
 
 	// Restart button
 	announceMQTTBridgeButtonEntity((char*)"ESP Restart", (char*)"esp_restart", true, false, (char*)"mdi:restart"); // Restart Button
@@ -272,8 +278,120 @@ void announceMQTTDevice(device_t device) {
 	announceMQTTBinarySensor(device, (char *)"plug", (char *)"Docked", (char *)"docked", true, hasDockAndBattery);
 	announceMQTTBinarySensor(device, (char *)"problem", (char *)"Generic error", (char *)"generic_error", true, true);
 	announceMQTTLocationSensor(device);
+	announceMQTTDeviceSensors(device);
+	announceMQTTDeviceProbeButton(device);
 
 	announceMQTTButtonEvent(device);
+
+	// Send the values already known, so the new entities are not empty
+	sendMQTTDeviceSensors(device.device_id);
+}
+
+// Diagnostic sensors for one device (signal, battery readings, status counters ...)
+// See the table in device_sensors.cpp.
+void announceMQTTDeviceSensors(device_t device) {
+	for (int i = 0; i < deviceSensorCount(); i++) {
+		const device_sensor_t* s = deviceSensor(i);
+
+		StaticJsonDocument<1024> doc;
+
+		char avtytopic[200];
+		sprintf(avtytopic, "ws2mqtt/bridge_%08x/state", DEVICE_ID);
+		doc["avty_t"] = avtytopic;
+
+		JsonObject dev = doc.createNestedObject("dev");
+		addDeviceDescription(dev, device);
+
+		doc["name"] = s->name;
+		doc["entity_category"] = "diagnostic";
+		if (!s->enabled)
+			doc["en"] = false;
+		doc["icon"] = s->icon;
+		if (strcmp(s->devClass, "None") != 0)
+			doc["dev_cla"] = s->devClass;
+		if (strcmp(s->unit, "None") != 0)
+			doc["unit_of_meas"] = s->unit;
+
+		char stat_t[128];
+		snprintf(stat_t, sizeof(stat_t), "ws2mqtt/%u/%s", (unsigned int)device.device_id, s->key);
+		doc["stat_t"] = stat_t;
+
+		char uniq_id[128];
+		snprintf(uniq_id, sizeof(uniq_id), "%u_%s_ws2mqtt", (unsigned int)device.device_id, s->key);
+		doc["uniq_id"] = uniq_id;
+
+		char msg[900];
+		if (!serializeDiscovery(doc, msg, sizeof(msg)))
+			continue;
+
+		if (mqttClient.connected()) {
+			char topic[200];
+			snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/sensor/ws2mqtt_%u/%s/config", (unsigned int)device.device_id, s->key);
+			mqttPublish(topic, msg, true, MQTT_CAT_HOUSEKEEPING);
+		}
+	}
+}
+
+// A Probe button on the device. It sends "probe_<device id>" to the bridge's
+// command topic, like the other buttons.
+void announceMQTTDeviceProbeButton(device_t device) {
+	StaticJsonDocument<1024> doc;
+
+	char avtytopic[200];
+	sprintf(avtytopic, "ws2mqtt/bridge_%08x/state", DEVICE_ID);
+	doc["avty_t"] = avtytopic;
+
+	JsonObject dev = doc.createNestedObject("dev");
+	addDeviceDescription(dev, device);
+
+	doc["name"] = "Probe";
+	doc["entity_category"] = "diagnostic";
+	doc["icon"] = "mdi:radar";
+
+	char cmdtopic[200];
+	sprintf(cmdtopic, "ws2mqtt/bridge_%08x/command", DEVICE_ID);
+	doc["cmd_t"] = cmdtopic;
+
+	char cmd[48];
+	snprintf(cmd, sizeof(cmd), "probe_%u", (unsigned int)device.device_id);
+	doc["cmd_tpl"] = cmd;
+
+	char uniq_id[128];
+	snprintf(uniq_id, sizeof(uniq_id), "%u_probe_ws2mqtt", (unsigned int)device.device_id);
+	doc["uniq_id"] = uniq_id;
+
+	char msg[900];
+	if (!serializeDiscovery(doc, msg, sizeof(msg)))
+		return;
+
+	if (mqttClient.connected()) {
+		char topic[200];
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/button/ws2mqtt_%u/probe/config", (unsigned int)device.device_id);
+		mqttPublish(topic, msg, true, MQTT_CAT_HOUSEKEEPING);
+	}
+}
+
+static void publishDeviceSensor(const device_runtime_t* rt, int index) {
+	if (!mqttClient.connected() || rt == NULL)
+		return;
+	char value[80];
+	if (!deviceSensorValue(index, rt, value, sizeof(value)))
+		return;
+	char topic[200];
+	snprintf(topic, sizeof(topic), "ws2mqtt/%u/%s", (unsigned int)rt->device_id, deviceSensor(index)->key);
+	mqttPublish(topic, value, true, MQTT_CAT_HOUSEKEEPING);
+}
+
+void sendMQTTDeviceSensors(uint32_t device_id) {
+	const device_runtime_t* rt = runtimeByDeviceId(device_id);
+	for (int i = 0; i < deviceSensorCount(); i++)
+		publishDeviceSensor(rt, i);
+}
+
+void sendMQTTDeviceSensor(uint32_t device_id, const char* key) {
+	int index = deviceSensorIndex(key);
+	if (index >= 0)
+		publishDeviceSensor(runtimeByDeviceId(device_id), index);
 }
 
 void addDeviceDescription(JsonObject dev, device_t device) {
@@ -457,6 +575,16 @@ void removeMQTTDevice(device_t device) {
 		mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
 		snprintf(topic, sizeof(topic), "ws2mqtt/%u/location", (unsigned int)device.device_id);
 		mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+
+		snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/button/ws2mqtt_%u/probe/config", (unsigned int)device.device_id);
+		mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+
+		for (int i = 0; i < deviceSensorCount(); i++) {
+			snprintf(topic, sizeof(topic), HA_AUTODISCOVERY_PREFIX"/sensor/ws2mqtt_%u/%s/config", (unsigned int)device.device_id, deviceSensor(i)->key);
+			mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+			snprintf(topic, sizeof(topic), "ws2mqtt/%u/%s", (unsigned int)device.device_id, deviceSensor(i)->key);
+			mqttPublish(topic, "", true, MQTT_CAT_HOUSEKEEPING);
+		}
 	}
 
 	// Clear the retained state of each entity as well
@@ -516,6 +644,22 @@ void handleMQTTCommand(char* command) {
 #endif
 	else if (strcmp(command, "esp_restart") == 0) {
 		ESP.restart();
+	}
+	else if (strcmp(command, "probe_all") == 0) {
+		probeAllDevices();
+	}
+	else if (strcmp(command, "rescan") == 0) {
+		sendQuerySIDMap();
+	}
+	else if (strncmp(command, "probe_", 6) == 0) {
+		// probe_<device id>: the Probe button on a device
+		char* end = NULL;
+		unsigned long id = strtoul(command + 6, &end, 10);
+		if (isdigit((unsigned char)command[6]) && end != command + 6 && *end == '\0') {
+			const device_runtime_t* rt = runtimeByDeviceId((uint32_t)id);
+			if (rt != NULL)
+				probeDevice(rt->sid);
+		}
 	}
 
 }
