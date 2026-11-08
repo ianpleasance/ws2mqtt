@@ -107,6 +107,7 @@ void announceMQTTBridgeEntities() {
 	announceMQTTBridgeButtonEntity((char*)"Probe All Devices", (char*)"probe_all", true, true, (char*)"mdi:radar");
 	announceMQTTBridgeButtonEntity((char*)"Rescan Radio Network", (char*)"rescan", true, false, (char*)"mdi:radar");
 	announceMQTTBridgeButtonEntity((char*)"Mark All Devices Docked", (char*)"mark_docked", true, false, (char*)"mdi:power-plug");
+	announceMQTTBridgeButtonEntity((char*)"Mark All Batteries OK", (char*)"mark_battery_ok", true, false, (char*)"mdi:battery-check");
 
 	// Whether the radio module is answering (see MODULE_RESPONSE_TIMEOUT_MS)
 	announceMQTTBridgeBinarySensorEntity((char*)"Radio Module Responding", (char*)"module_responding", (char*)"connectivity", true);
@@ -572,9 +573,12 @@ void sendMQTTState(uint32_t device_id, char* short_name, bool state) {
 
 void sendMQTTDeviceState(device_state_t ds) {
 	sendMQTTState(ds.device_id, (char*)"generic_error", ds.generic_error);
-	sendMQTTState(ds.device_id, (char*)"docked", ds.docked);
-	sendMQTTState(ds.device_id, (char*)"sensor_battery", ds.sensor_battery);
-	sendMQTTState(ds.device_id, (char*)"radio_module_battery", ds.radio_module_battery);
+	if (ds.docked_known)
+		sendMQTTState(ds.device_id, (char*)"docked", ds.docked);
+	if (ds.battery_known) {
+		sendMQTTState(ds.device_id, (char*)"sensor_battery", ds.sensor_battery);
+		sendMQTTState(ds.device_id, (char*)"radio_module_battery", ds.radio_module_battery);
+	}
 }
 
 void announceMQTTButtonEvent(device_t device) {
@@ -702,7 +706,10 @@ void handleMQTTCommand(char* command) {
 		probeAllDevices();
 	}
 	else if (strcmp(command, "mark_docked") == 0) {
-		markAllDocked();
+		markAllDocked(NULL);
+	}
+	else if (strcmp(command, "mark_battery_ok") == 0) {
+		markAllBatteryOk(NULL);
 	}
 	else if (strcmp(command, "rescan") == 0) {
 		sendQuerySIDMap();

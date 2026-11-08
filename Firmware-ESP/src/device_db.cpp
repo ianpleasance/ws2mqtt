@@ -136,12 +136,18 @@ static int callbackGetAllDeviceStatesFromDB(void *data, int argc, char **argv, c
 			ds.sid = atoi(argv[i]);
 		else if (strcmp(azColName[i], "generic_error") == 0)
 			ds.generic_error = atoi(argv[i]);
-		else if (strcmp(azColName[i], "docked") == 0)
-			ds.docked = atoi(argv[i]);
-		else if (strcmp(azColName[i], "sensor_battery_error") == 0)
-			ds.sensor_battery = atoi(argv[i]);
+		else if (strcmp(azColName[i], "docked") == 0) {
+			int v = atoi(argv[i]);
+			ds.docked_known = (v != 2);
+			ds.docked = (v == 1);
+		}
+		else if (strcmp(azColName[i], "sensor_battery_error") == 0) {
+			int v = atoi(argv[i]);
+			ds.battery_known = (v != 2);
+			ds.sensor_battery = (v == 1);
+		}
 		else if (strcmp(azColName[i], "radio_module_battery_error") == 0)
-			ds.radio_module_battery = atoi(argv[i]);
+			ds.radio_module_battery = (atoi(argv[i]) == 1);
 	}
 
 	callback(ds);
@@ -243,7 +249,11 @@ void updateDeviceDBState(device_state_t ds) {
 	snprintf(sql, sizeof(sql), "INSERT OR IGNORE INTO devices (sid) VALUES (%d)", ds.sid);
 	db_exec(deviceDB, sql);
 
-	snprintf(sql, sizeof(sql), "UPDATE devices SET device_id=%d, generic_error=%d, docked=%d, sensor_battery_error=%d, radio_module_battery_error=%d WHERE sid = %d", (int)ds.device_id, ds.generic_error, ds.docked, ds.sensor_battery, ds.radio_module_battery, ds.sid);
+	// 2 = not known yet
+	int docked = ds.docked_known ? (ds.docked ? 1 : 0) : 2;
+	int sensorBattery = ds.battery_known ? (ds.sensor_battery ? 1 : 0) : 2;
+	int radioBattery = ds.battery_known ? (ds.radio_module_battery ? 1 : 0) : 2;
+	snprintf(sql, sizeof(sql), "UPDATE devices SET device_id=%d, generic_error=%d, docked=%d, sensor_battery_error=%d, radio_module_battery_error=%d WHERE sid = %d", (int)ds.device_id, ds.generic_error, docked, sensorBattery, radioBattery, ds.sid);
 	db_exec(deviceDB, sql);
 }
 

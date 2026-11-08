@@ -76,6 +76,8 @@ void handleError(uint8_t* msg, int length) {
 	ds.docked = (pkt.error_flags & SPI_RX_ERROR_FLAG_DOCKED);
 	ds.sensor_battery = (pkt.error_flags & SPI_RX_ERROR_FLAG_SENSOR_BATTERY);
 	ds.radio_module_battery = (pkt.error_flags & SPI_RX_ERROR_FLAG_RADIO_MODULE_BATTERY);
+	ds.docked_known = true;
+	ds.battery_known = true;
 
 	sendMQTTDeviceState(ds);
 	updateDeviceDBState(ds);

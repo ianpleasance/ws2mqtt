@@ -81,6 +81,7 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 
     <div class="bar">
       <button id="probeAllBtn" type="button">Probe all devices</button>
       <button id="markDockedBtn" type="button">Mark all docked</button>
+      <button id="markBatteryBtn" type="button">Mark all battery OK</button>
       <button id="forgetAllBtn" type="button">Forget all devices</button>
       <label><input type="checkbox" id="showUnid"> Show unidentified SIDs <span id="unidCount"></span></label>
       <span>Probe asks devices for their status. Forget removes devices from this gateway and Home Assistant; devices still on the radio network are found again within a minute.</span>
@@ -210,7 +211,7 @@ function renderDevices(data) {
     return 0;
   }
   var table = el("table"), head = el("tr");
-  ["SID", "Device ID", "Location", "Model", "Type", "Alarm", "Docked", "Faults", "Signal", "Last heard", ""].forEach(function (h) {
+  ["SID", "Device ID", "Location", "Model", "Type", "Alarm", "Docked", "Battery", "Faults", "Signal", "Last heard", ""].forEach(function (h) {
     head.appendChild(el("th", null, h));
   });
   table.appendChild(head);
@@ -256,8 +257,18 @@ function renderDevices(data) {
     var isControlUnit = (d.type_id === "0xC4");
     var docked = el("td");
     if (isControlUnit) docked.appendChild(pill("N/A"));
-    else docked.appendChild(d.state ? pill(d.state.docked ? "Docked" : "Not docked", d.state.docked ? "ok" : "warn") : pill("None reported"));
+    else docked.appendChild(d.state && d.state.docked !== null ? pill(d.state.docked ? "Docked" : "Not docked", d.state.docked ? "ok" : "warn") : pill("None reported"));
     tr.appendChild(docked);
+
+    var battery = el("td");
+    if (isControlUnit) battery.appendChild(pill("N/A"));
+    else if (!d.state || d.state.sensor_battery === null) battery.appendChild(pill("None reported"));
+    else {
+      if (d.state.sensor_battery) battery.appendChild(pill("Sensor battery low", "warn"));
+      if (d.state.radio_module_battery) battery.appendChild(pill("Radio battery low", "warn"));
+      if (!d.state.sensor_battery && !d.state.radio_module_battery) battery.appendChild(pill("OK", "ok"));
+    }
+    tr.appendChild(battery);
 
     var faults = el("td");
     if (isControlUnit) {
@@ -265,11 +276,7 @@ function renderDevices(data) {
       faults.appendChild(d.state && d.state.generic_error ? pill("Error", "bad") : pill("N/A"));
     } else if (!d.state) faults.appendChild(pill("None reported"));
     else {
-      var any = false;
-      if (d.state.generic_error) { faults.appendChild(pill("Error", "bad")); any = true; }
-      if (d.state.sensor_battery) { faults.appendChild(pill("Sensor battery", "warn")); any = true; }
-      if (d.state.radio_module_battery) { faults.appendChild(pill("Radio battery", "warn")); any = true; }
-      if (!any) faults.appendChild(pill("None", "ok"));
+      faults.appendChild(d.state.generic_error ? pill("Error", "bad") : pill("None", "ok"));
     }
     tr.appendChild(faults);
 
@@ -492,8 +499,19 @@ flashBtns.probeAll.addEventListener("click", function () {
 });
 
 document.getElementById("markDockedBtn").addEventListener("click", function () {
-  if (!confirm("Mark all devices as docked?\n\nThis records that every alarm (not control units) is docked, as the gateway cannot read that from a device. A real report from a device replaces it.")) return;
-  post("api/mark-docked").then(refresh).catch(function () { alert("Could not mark the devices as docked"); });
+  if (!confirm("Mark all devices as docked?\n\nThis records that every alarm (not control units) is docked, as the gateway cannot read that from a device. Devices that have reported they are not docked are left as they are. A real report from a device replaces it.")) return;
+  post("api/mark-docked").then(function (r) {
+    if (r.skipped_not_docked) alert(r.skipped_not_docked + " device(s) that reported they are not docked were left unchanged.");
+    return refresh();
+  }).catch(function () { alert("Could not mark the devices as docked"); });
+});
+
+document.getElementById("markBatteryBtn").addEventListener("click", function () {
+  if (!confirm("Mark all batteries as OK?\n\nThis records that every alarm (not control units) has good batteries, as the gateway cannot read that until a device reports. Any device showing a fault is left as it is. A real report from a device replaces it.")) return;
+  post("api/mark-battery-ok").then(function (r) {
+    if (r.skipped_fault) alert(r.skipped_fault + " device(s) showing a fault were left unchanged.");
+    return refresh();
+  }).catch(function () { alert("Could not mark the batteries as OK"); });
 });
 
 document.getElementById("forgetAllBtn").addEventListener("click", function () {

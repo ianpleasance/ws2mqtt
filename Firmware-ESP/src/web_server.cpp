@@ -128,9 +128,20 @@ static void handleForget() {
 static void handleMarkDocked() {
 	if (!writeAllowed())
 		return;
-	int count = markAllDocked();
-	char body[48];
-	snprintf(body, sizeof(body), "{\"ok\":true,\"changed\":%d}", count);
+	int skipped = 0;
+	int count = markAllDocked(&skipped);
+	char body[80];
+	snprintf(body, sizeof(body), "{\"ok\":true,\"changed\":%d,\"skipped_not_docked\":%d}", count, skipped);
+	server.send(200, "application/json", body);
+}
+
+static void handleMarkBatteryOk() {
+	if (!writeAllowed())
+		return;
+	int skipped = 0;
+	int count = markAllBatteryOk(&skipped);
+	char body[80];
+	snprintf(body, sizeof(body), "{\"ok\":true,\"changed\":%d,\"skipped_fault\":%d}", count, skipped);
 	server.send(200, "application/json", body);
 }
 
@@ -200,6 +211,7 @@ void setupWeb() {
 	server.on("/api/forget", HTTP_POST, handleForget);
 	server.on("/api/forget-all", HTTP_POST, handleForgetAll);
 	server.on("/api/mark-docked", HTTP_POST, handleMarkDocked);
+	server.on("/api/mark-battery-ok", HTTP_POST, handleMarkBatteryOk);
 	server.on("/favicon.svg", HTTP_GET, handleFavicon);
 	server.on("/favicon.ico", HTTP_GET, handleFavicon);
 	server.onNotFound(handleNotFound);

@@ -70,30 +70,68 @@ int probeAllDevices() {
 	return count;
 }
 
-int markAllDocked() {
-	int count = 0;
+// Record the flags a mark changed: runtime, database and Home Assistant. Not
+// runtimeSetState(): that would also mark the device as just heard from.
+static void saveMarkedState(device_runtime_t* rt) {
+	rt->haveState = true;
+
+	device_state_t ds;
+	memset(&ds, 0, sizeof(ds));
+	ds.sid = rt->sid;
+	ds.device_id = rt->device_id;
+	ds.generic_error = rt->generic_error;
+	ds.docked = rt->docked;
+	ds.sensor_battery = rt->sensor_battery;
+	ds.radio_module_battery = rt->radio_module_battery;
+	ds.docked_known = rt->dockedKnown;
+	ds.battery_known = rt->batteryKnown;
+
+	updateDeviceDBState(ds);
+	sendMQTTDeviceState(ds);
+}
+
+int markAllDocked(int* skippedNotDocked) {
+	int count = 0, skipped = 0;
 	for (int sid = 0; sid < RUNTIME_MAX_SID; sid++) {
 		device_runtime_t* rt = runtimeBySid(sid);
 		if (rt == NULL || rt->device_type == DEVICE_TYPE_CONTROL_UNIT)
 			continue;
 
-		// Not runtimeSetState(): that would also mark the device as just heard from
-		rt->haveState = true;
+		// Never override a device that has reported it is not docked
+		if (rt->haveState && rt->dockedKnown && !rt->docked) {
+			skipped++;
+			continue;
+		}
 		rt->docked = true;
-
-		device_state_t ds;
-		memset(&ds, 0, sizeof(ds));
-		ds.sid = rt->sid;
-		ds.device_id = rt->device_id;
-		ds.generic_error = rt->generic_error;
-		ds.docked = true;
-		ds.sensor_battery = rt->sensor_battery;
-		ds.radio_module_battery = rt->radio_module_battery;
-
-		updateDeviceDBState(ds);
-		sendMQTTDeviceState(ds);
+		rt->dockedKnown = true;
+		saveMarkedState(rt);
 		count++;
 	}
+	if (skippedNotDocked != NULL)
+		*skippedNotDocked = skipped;
+	return count;
+}
+
+int markAllBatteryOk(int* skippedFault) {
+	int count = 0, skipped = 0;
+	for (int sid = 0; sid < RUNTIME_MAX_SID; sid++) {
+		device_runtime_t* rt = runtimeBySid(sid);
+		if (rt == NULL || rt->device_type == DEVICE_TYPE_CONTROL_UNIT)
+			continue;
+
+		// Never override a device that shows a fault
+		if (rt->haveState && (rt->generic_error || rt->sensor_battery || rt->radio_module_battery)) {
+			skipped++;
+			continue;
+		}
+		rt->sensor_battery = false;
+		rt->radio_module_battery = false;
+		rt->batteryKnown = true;
+		saveMarkedState(rt);
+		count++;
+	}
+	if (skippedFault != NULL)
+		*skippedFault = skipped;
 	return count;
 }
 

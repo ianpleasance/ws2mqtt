@@ -19,6 +19,10 @@ typedef struct {
 	bool docked;
 	bool sensor_battery;
 	bool radio_module_battery;
+	// False while the docked / battery flags have never been reported or marked
+	// (stored in the database as the value 2, so no schema change is needed)
+	bool docked_known;
+	bool battery_known;
 } device_state_t;
 
 void resetDeviceDB();

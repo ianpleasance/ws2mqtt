@@ -322,9 +322,15 @@ void writeDevicesJson(Print& out) {
 		if (d->haveState) {
 			j.obj("state");
 			j.boolean("generic_error", d->generic_error);
-			j.boolean("docked", d->docked);
-			j.boolean("sensor_battery", d->sensor_battery);
-			j.boolean("radio_module_battery", d->radio_module_battery);
+			// null = not reported or marked yet
+			if (d->dockedKnown) j.boolean("docked", d->docked); else j.nul("docked");
+			if (d->batteryKnown) {
+				j.boolean("sensor_battery", d->sensor_battery);
+				j.boolean("radio_module_battery", d->radio_module_battery);
+			} else {
+				j.nul("sensor_battery");
+				j.nul("radio_module_battery");
+			}
 			j.end();
 		} else {
 			j.nul("state");

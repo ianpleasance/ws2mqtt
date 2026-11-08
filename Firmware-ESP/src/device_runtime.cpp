@@ -56,6 +56,8 @@ void runtimeSetState(const device_state_t& ds) {
 	d->docked = ds.docked;
 	d->sensor_battery = ds.sensor_battery;
 	d->radio_module_battery = ds.radio_module_battery;
+	d->dockedKnown = ds.docked_known;
+	d->batteryKnown = ds.battery_known;
 	d->lastSeenMs = millis();
 }
 
@@ -122,6 +124,8 @@ static void loadDeviceState(device_state_t ds) {
 	d->docked = ds.docked;
 	d->sensor_battery = ds.sensor_battery;
 	d->radio_module_battery = ds.radio_module_battery;
+	d->dockedKnown = ds.docked_known;
+	d->batteryKnown = ds.battery_known;
 }
 
 void runtimeLoadFromDB() {

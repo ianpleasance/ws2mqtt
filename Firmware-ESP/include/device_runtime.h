@@ -32,6 +32,8 @@ typedef struct {
 	bool docked;
 	bool sensor_battery;
 	bool radio_module_battery;
+	bool dockedKnown;      // reported by the device, or marked by the user
+	bool batteryKnown;
 
 	// Last remote status response (D4 06 .. 00)
 	bool haveDiag;
