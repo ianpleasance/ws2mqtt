@@ -70,6 +70,33 @@ int probeAllDevices() {
 	return count;
 }
 
+int markAllDocked() {
+	int count = 0;
+	for (int sid = 0; sid < RUNTIME_MAX_SID; sid++) {
+		device_runtime_t* rt = runtimeBySid(sid);
+		if (rt == NULL || rt->device_type == DEVICE_TYPE_CONTROL_UNIT)
+			continue;
+
+		// Not runtimeSetState(): that would also mark the device as just heard from
+		rt->haveState = true;
+		rt->docked = true;
+
+		device_state_t ds;
+		memset(&ds, 0, sizeof(ds));
+		ds.sid = rt->sid;
+		ds.device_id = rt->device_id;
+		ds.generic_error = rt->generic_error;
+		ds.docked = true;
+		ds.sensor_battery = rt->sensor_battery;
+		ds.radio_module_battery = rt->radio_module_battery;
+
+		updateDeviceDBState(ds);
+		sendMQTTDeviceState(ds);
+		count++;
+	}
+	return count;
+}
+
 // Remove control characters, trim spaces and cut to the maximum length without
 // splitting a UTF-8 character
 static void cleanLocation(const char* in, char* out, size_t outSize) {

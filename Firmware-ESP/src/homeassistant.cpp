@@ -10,6 +10,7 @@
 #include "device_runtime.h"
 #include "device_sensors.h"
 #include "device_manage.h"
+#include "module_info.h"
 
 extern PubSubClient mqttClient;
 
@@ -105,6 +106,10 @@ void announceMQTTBridgeEntities() {
 	// Probe every device now, and rescan the radio network for devices
 	announceMQTTBridgeButtonEntity((char*)"Probe All Devices", (char*)"probe_all", true, true, (char*)"mdi:radar");
 	announceMQTTBridgeButtonEntity((char*)"Rescan Radio Network", (char*)"rescan", true, false, (char*)"mdi:radar");
+	announceMQTTBridgeButtonEntity((char*)"Mark All Devices Docked", (char*)"mark_docked", true, false, (char*)"mdi:power-plug");
+
+	// Whether the radio module is answering (see MODULE_RESPONSE_TIMEOUT_MS)
+	announceMQTTBridgeBinarySensorEntity((char*)"Radio Module Responding", (char*)"module_responding", (char*)"connectivity", true);
 
 	// Restart button
 	announceMQTTBridgeButtonEntity((char*)"ESP Restart", (char*)"esp_restart", true, false, (char*)"mdi:restart"); // Restart Button
@@ -194,6 +199,43 @@ void announceMQTTBridgeSensorEntity(char* name, char* sensor, char* dev_class, c
 
 }
 
+// A bridge binary sensor (ON/OFF), for example whether the radio module is answering
+void announceMQTTBridgeBinarySensorEntity(char* name, char* sensor, char* dev_class, bool diagnostic) {
+	StaticJsonDocument<768> doc;
+
+	char avtytopic[200];
+	sprintf(avtytopic, "ws2mqtt/bridge_%08x/state", DEVICE_ID);
+	doc["avty_t"] = avtytopic;
+
+	JsonObject dev = doc.createNestedObject("dev");
+	addBridgeDescription(dev);
+
+	doc["name"] = name;
+	if (diagnostic)
+		doc["entity_category"] = "diagnostic";
+	doc["dev_cla"] = dev_class;
+	doc["pl_on"] = "ON";
+	doc["pl_off"] = "OFF";
+
+	char stattopic[200];
+	sprintf(stattopic, "ws2mqtt/bridge_%08x/%s", DEVICE_ID, sensor);
+	doc["stat_t"] = stattopic;
+
+	char uniq_id[128];
+	sprintf(uniq_id, "ws2mqtt_bridge_binary_%s", sensor);
+	doc["uniq_id"] = uniq_id;
+
+	char msg[800];
+	if (!serializeDiscovery(doc, msg, sizeof(msg)))
+		return;
+
+	if (mqttClient.connected()) {
+		char topic[200];
+		sprintf(topic, HA_AUTODISCOVERY_PREFIX"/binary_sensor/ws2mqtt_bridge_%08x/%s/config", DEVICE_ID, sensor);
+		mqttPublish(topic, msg, true, MQTT_CAT_HOUSEKEEPING);
+	}
+}
+
 void addBridgeDescription(JsonObject dev) {
 	char devid[32];
 	sprintf(devid, "ws2mqtt_bridge_%08x", DEVICE_ID);
@@ -221,6 +263,8 @@ void sendMQTTBridgeEvent() {
 #define BRIDGE_SENSOR_VALUE_LEN 200
 #define BRIDGE_SENSOR_HEARTBEAT 300
 static char bridgeLastValue[BRIDGE_SENSOR_MAX][BRIDGE_SENSOR_VALUE_LEN];
+static int8_t moduleRespSent = -1;   // -1 = not sent yet, else 0/1
+static unsigned long moduleRespSentAt;
 static bool bridgeSent[BRIDGE_SENSOR_MAX];
 static unsigned long bridgeSentAt[BRIDGE_SENSOR_MAX];
 static uint32_t bridgeSeenConnects = 0;
@@ -236,6 +280,7 @@ void loopBridgeSensors () {
 	if (mqttStats.connects != bridgeSeenConnects) {
 		bridgeSeenConnects = mqttStats.connects;
 		memset(bridgeSent, 0, sizeof(bridgeSent));
+		moduleRespSent = -1;
 	}
 
 	int count = bridgeSensorCount();
@@ -254,6 +299,14 @@ void loopBridgeSensors () {
 		strcpy(bridgeLastValue[i], value);
 		bridgeSent[i] = true;
 		bridgeSentAt[i] = millis();
+	}
+
+	// Radio module responding (ON/OFF), sent when it changes and as a heartbeat
+	int8_t resp = moduleResponding() ? 1 : 0;
+	if (resp != moduleRespSent || millis() - moduleRespSentAt > BRIDGE_SENSOR_HEARTBEAT * 1000UL) {
+		sendMQTTBridgeSensor((char*)"module_responding", (char*)(resp ? "ON" : "OFF"));
+		moduleRespSent = resp;
+		moduleRespSentAt = millis();
 	}
 }
 
@@ -647,6 +700,9 @@ void handleMQTTCommand(char* command) {
 	}
 	else if (strcmp(command, "probe_all") == 0) {
 		probeAllDevices();
+	}
+	else if (strcmp(command, "mark_docked") == 0) {
+		markAllDocked();
 	}
 	else if (strcmp(command, "rescan") == 0) {
 		sendQuerySIDMap();

@@ -26,6 +26,8 @@ void announceMQTTBridgeSensorEntity(
 	char* icon
 );
 
+void announceMQTTBridgeBinarySensorEntity(char* name, char* sensor, char* dev_class, bool diagnostic);
+
 void addBridgeDescription(JsonObject dev);
 void sendMQTTBridgeEvent();
 

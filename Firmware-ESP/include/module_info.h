@@ -64,4 +64,10 @@ void noteUnrecognisedPacket(const uint8_t* msg, int length, bool withSub);
 
 extern module_info_t moduleInfo;
 
+// The radio module is polled every minute, so a module that has sent nothing
+// at all for this long is not answering (dead, or the UART is disconnected).
+// Measured from boot until the first frame arrives.
+#define MODULE_RESPONSE_TIMEOUT_MS (10UL * 60UL * 1000UL)
+bool moduleResponding();
+
 #endif // MODULE_INFO_H

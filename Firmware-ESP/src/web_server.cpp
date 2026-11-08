@@ -125,6 +125,15 @@ static void handleForget() {
 	server.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handleMarkDocked() {
+	if (!writeAllowed())
+		return;
+	int count = markAllDocked();
+	char body[48];
+	snprintf(body, sizeof(body), "{\"ok\":true,\"changed\":%d}", count);
+	server.send(200, "application/json", body);
+}
+
 static void handleForgetAll() {
 	if (!writeAllowed())
 		return;
@@ -190,6 +199,7 @@ void setupWeb() {
 	server.on("/api/probe-all", HTTP_POST, handleProbeAll);
 	server.on("/api/forget", HTTP_POST, handleForget);
 	server.on("/api/forget-all", HTTP_POST, handleForgetAll);
+	server.on("/api/mark-docked", HTTP_POST, handleMarkDocked);
 	server.on("/favicon.svg", HTTP_GET, handleFavicon);
 	server.on("/favicon.ico", HTTP_GET, handleFavicon);
 	server.onNotFound(handleNotFound);

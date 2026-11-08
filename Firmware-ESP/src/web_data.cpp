@@ -247,6 +247,8 @@ void writeModuleJson(Print& out) {
 	j.unum("bad_length", moduleInfo.rxBadLength);
 	j.unum("short_packets", moduleInfo.rxShortPackets);
 	j.age("age_ms", moduleInfo.lastRxMs);
+	j.boolean("responding", moduleResponding());
+	j.unum("timeout_s", MODULE_RESPONSE_TIMEOUT_MS / 1000);
 	j.end();
 
 	// Packets the firmware did not understand, by type

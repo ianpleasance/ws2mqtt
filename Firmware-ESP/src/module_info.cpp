@@ -39,3 +39,7 @@ void noteUnrecognisedPacket(const uint8_t* msg, int length, bool withSub) {
 	memcpy(u->bytes, msg, u->length);
 	moduleInfo.unrecognisedLast = idx;
 }
+
+bool moduleResponding() {
+	return (uint32_t)(millis() - moduleInfo.lastRxMs) < MODULE_RESPONSE_TIMEOUT_MS;
+}

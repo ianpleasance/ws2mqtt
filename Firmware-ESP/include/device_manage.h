@@ -14,6 +14,13 @@ bool forgetDevice(uint8_t sid);
 // Returns false if there is no device with that SID.
 bool probeDevice(uint8_t sid);
 
+// Mark every device that can be docked (not the control units) as docked, in
+// the database, the web interface and Home Assistant. This is an assumption made
+// by the user, as the docked state cannot be read from a device; the next real
+// report from a device replaces it. Other fault flags are left as they were.
+// Returns how many devices were changed.
+int markAllDocked();
+
 // Ask every known device for its status. Returns how many were queued.
 int probeAllDevices();
 

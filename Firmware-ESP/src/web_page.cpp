@@ -9,7 +9,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WS2MQTT Gateway</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
 :root {
   --bg: #f4f5f7; --card: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6ec;
@@ -80,6 +80,7 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 
     <h2>WiSafe2 devices</h2>
     <div class="bar">
       <button id="probeAllBtn" type="button">Probe all devices</button>
+      <button id="markDockedBtn" type="button">Mark all docked</button>
       <button id="forgetAllBtn" type="button">Forget all devices</button>
       <label><input type="checkbox" id="showUnid"> Show unidentified SIDs <span id="unidCount"></span></label>
       <span>Probe asks devices for their status. Forget removes devices from this gateway and Home Assistant; devices still on the radio network are found again within a minute.</span>
@@ -230,7 +231,7 @@ function renderDevices(data) {
     inp.addEventListener("blur", function () { editing = false; });
     inp.addEventListener("keydown", function (e) { if (e.key === "Enter") inp.blur(); });
     inp.addEventListener("change", function () {
-      post("/api/location?sid=" + d.sid + "&value=" + encodeURIComponent(inp.value))
+      post("api/location?sid=" + d.sid + "&value=" + encodeURIComponent(inp.value))
         .then(refresh).catch(function () { alert("Could not save the location"); });
     });
     loc.appendChild(inp);
@@ -275,7 +276,7 @@ function renderDevices(data) {
     var sig = el("td");
     if (d.diag) {
       sig.appendChild(document.createTextNode("RSSI " + d.diag.rssi));
-      sig.appendChild(el("div", "sub", "fw? " + d.diag.firmware_version + ", faults " + d.diag.radio_fault_count));
+      sig.appendChild(el("div", "sub", "faults " + d.diag.radio_fault_count));
     } else sig.textContent = "-";
     tr.appendChild(sig);
 
@@ -298,7 +299,7 @@ function renderDevices(data) {
     var pb = actionButton(pkey, "Probe");
     pb.addEventListener("click", function () {
       flash(pkey);
-      post("/api/probe?sid=" + d.sid).then(refresh).catch(function () { unflash(pkey); alert("Could not probe the device"); });
+      post("api/probe?sid=" + d.sid).then(refresh).catch(function () { unflash(pkey); alert("Could not probe the device"); });
     });
     act.appendChild(pb);
     act.appendChild(document.createTextNode(" "));
@@ -306,7 +307,7 @@ function renderDevices(data) {
     fb.type = "button";
     fb.addEventListener("click", function () {
       if (!confirm("Forget device " + d.device_id + " (SID " + d.sid + ")?\n\nIt is removed from this gateway and Home Assistant, and its location is cleared. If it is still on the radio network it will be found again within a minute.")) return;
-      post("/api/forget?sid=" + d.sid).then(refresh).catch(function () { alert("Could not forget the device"); });
+      post("api/forget?sid=" + d.sid).then(refresh).catch(function () { alert("Could not forget the device"); });
     });
     act.appendChild(fb);
     tr.appendChild(act);
@@ -365,6 +366,7 @@ function renderModule(m) {
     rows.push(["SID map", m.sidmap.hex + " (" + fmtAge(m.sidmap.age_ms) + ")"]);
   } else rows.push(["SID map", "Not received yet"]);
   rows.push(["Welcome handshakes", m.welcome.count + " (" + fmtAge(m.welcome.age_ms) + ")"]);
+  rows.push(["Module responding", yesNo(m.rx.responding, true)]);
   rows.push(["Frames received", m.rx.frames + " (" + fmtAge(m.rx.age_ms) + ")"]);
   rows.push(["RX problems", m.rx.frame_timeouts + " timeouts, " + m.rx.bad_length + " bad length, " + m.rx.short_packets + " short"]);
   if (m.unrecognised) {
@@ -459,9 +461,9 @@ function refresh() {
   if (paused) return Promise.resolve();
   var all = document.getElementById("showHk").checked ? "1" : "0";
   var sys, mod, dev;
-  return get("/data/system.json").then(function (r) { sys = r; return get("/data/module.json"); })
-    .then(function (r) { mod = r; return get("/data/devices.json"); })
-    .then(function (r) { dev = r; return get("/data/mqtt.json?all=" + all); })
+  return get("data/system.json").then(function (r) { sys = r; return get("data/module.json"); })
+    .then(function (r) { mod = r; return get("data/devices.json"); })
+    .then(function (r) { dev = r; return get("data/mqtt.json?all=" + all); })
     .then(function (mq) {
       // Leave the table alone while a location is being typed
       var alarms = editing
@@ -486,12 +488,17 @@ flashBtns.probeAll = document.getElementById("probeAllBtn");
 flashBtns.probeAll.idleText = flashBtns.probeAll.textContent;
 flashBtns.probeAll.addEventListener("click", function () {
   flash("probeAll");
-  post("/api/probe-all").then(refresh).catch(function () { unflash("probeAll"); alert("Could not probe the devices"); });
+  post("api/probe-all").then(refresh).catch(function () { unflash("probeAll"); alert("Could not probe the devices"); });
+});
+
+document.getElementById("markDockedBtn").addEventListener("click", function () {
+  if (!confirm("Mark all devices as docked?\n\nThis records that every alarm (not control units) is docked, as the gateway cannot read that from a device. A real report from a device replaces it.")) return;
+  post("api/mark-docked").then(refresh).catch(function () { alert("Could not mark the devices as docked"); });
 });
 
 document.getElementById("forgetAllBtn").addEventListener("click", function () {
   if (!confirm("Forget ALL devices?\n\nThey are removed from this gateway and Home Assistant. Devices still on the radio network are found again within a minute, with the locations you set.")) return;
-  post("/api/forget-all").then(refresh).catch(function () { alert("Could not forget the devices"); });
+  post("api/forget-all").then(refresh).catch(function () { alert("Could not forget the devices"); });
 });
 
 document.getElementById("pauseBtn").addEventListener("click", function () {
